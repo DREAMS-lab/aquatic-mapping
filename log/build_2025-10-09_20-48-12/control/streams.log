@@ -1,0 +1,30 @@
+[0.007s] Invoking command in '/home/blazar/rover_ws/build/control': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/blazar/workspace/rockytimes_ws/install/localisation:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/blazar/rover_ws/build/control -- -j16 -l16
+[0.038s] Invoked command in '/home/blazar/rover_ws/build/control' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/blazar/workspace/rockytimes_ws/install/localisation:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --build /home/blazar/rover_ws/build/control -- -j16 -l16
+[0.046s] Invoking command in '/home/blazar/rover_ws/build/control': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/blazar/workspace/rockytimes_ws/install/localisation:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/blazar/rover_ws/build/control
+[0.051s] -- Install configuration: ""
+[0.052s] -- Execute custom install script
+[0.052s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/lib/control/position_controller.py
+[0.052s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/lib/control/field.py
+[0.052s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/lib/control/teleop.py
+[0.052s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/lib/control/rover_pos_feedback.py
+[0.052s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/lib/control/rover_monitor.py
+[0.052s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/lib/control/temp_query.py
+[0.052s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control//launch/rover_bringup.launch.py
+[0.053s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control//config/rover_viz.rviz
+[0.053s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control//urdf/r1_rover.urdf
+[0.053s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/ament_index/resource_index/package_run_dependencies/control
+[0.053s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/ament_index/resource_index/parent_prefix_path/control
+[0.053s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/environment/ament_prefix_path.sh
+[0.053s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/environment/ament_prefix_path.dsv
+[0.053s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/environment/path.sh
+[0.054s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/environment/path.dsv
+[0.054s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/local_setup.bash
+[0.054s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/local_setup.sh
+[0.054s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/local_setup.zsh
+[0.054s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/local_setup.dsv
+[0.054s] -- Symlinking: /home/blazar/rover_ws/install/control/share/control/package.dsv
+[0.060s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/ament_index/resource_index/packages/control
+[0.060s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/cmake/controlConfig.cmake
+[0.060s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/cmake/controlConfig-version.cmake
+[0.060s] -- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/package.xml
+[0.061s] Invoked command in '/home/blazar/rover_ws/build/control' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/blazar/workspace/rockytimes_ws/install/localisation:/opt/ros/jazzy DEBUGINFOD_URLS=https://debuginfod.ubuntu.com /usr/bin/cmake --install /home/blazar/rover_ws/build/control

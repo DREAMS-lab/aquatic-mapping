@@ -1,0 +1,1 @@
+/home/blazar/rover_ws/build/control/ament_cmake_core/controlConfig-version.cmake

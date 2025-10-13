@@ -1,0 +1,26 @@
+-- Install configuration: ""
+-- Execute custom install script
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/lib/control/position_controller.py
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/lib/control/field.py
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/lib/control/teleop.py
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/lib/control/rover_pos_feedback.py
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/lib/control/rover_monitor.py
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/lib/control/temp_query.py
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control//launch/rover_bringup.launch.py
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control//config/rover_viz.rviz
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control//urdf/r1_rover.urdf
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/ament_index/resource_index/package_run_dependencies/control
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/ament_index/resource_index/parent_prefix_path/control
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/environment/ament_prefix_path.sh
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/environment/ament_prefix_path.dsv
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/environment/path.sh
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/environment/path.dsv
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/local_setup.bash
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/local_setup.sh
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/local_setup.zsh
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/local_setup.dsv
+-- Symlinking: /home/blazar/rover_ws/install/control/share/control/package.dsv
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/ament_index/resource_index/packages/control
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/cmake/controlConfig.cmake
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/cmake/controlConfig-version.cmake
+-- Up-to-date symlink: /home/blazar/rover_ws/install/control/share/control/package.xml
