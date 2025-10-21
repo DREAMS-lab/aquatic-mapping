@@ -1,1 +1,0 @@
-/home/blazar/rover_ws/src/control/scripts/temp_query.py

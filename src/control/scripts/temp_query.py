@@ -2,27 +2,42 @@
 
 import rclpy
 from rclpy.node import Node
-from px4_msgs.msg import VehicleOdometry
-from geometry_msgs.msg import PointStamped
 from std_msgs.msg import Float32
+from px4_msgs.msg import VehicleOdometry
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 import threading
-import time
 
 
-class TemperatureQuery(Node):
+class MultiFieldQuery(Node):
     def __init__(self):
-        super().__init__('temp_query')
+        super().__init__('multi_field_query')
         
-        # QoS profile for PX4 messages
+        # Define field display info
+        self.fields = {
+            'radial': {'name': 'Radial', 'color': '\033[96m', 'temp': None},
+            'x_compress': {'name': 'X-Compress', 'color': '\033[95m', 'temp': None},
+            'x_compress_tilt': {'name': 'X-Compress-Tilt', 'color': '\033[92m', 'temp': None},
+            'y_compress': {'name': 'Y-Compress', 'color': '\033[94m', 'temp': None},
+            'y_compress_tilt': {'name': 'Y-Compress-Tilt', 'color': '\033[93m', 'temp': None},
+        }
+        self.reset_color = '\033[0m'
+        
+        # Subscribe to temperature topics from all 5 field generators
+        for field_key in self.fields.keys():
+            self.create_subscription(
+                Float32,
+                f'/gaussian_field/{field_key}/temperature',
+                lambda msg, key=field_key: self.temp_callback(msg, key),
+                10
+            )
+        
+        # Subscribe to rover position for display
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
-        
-        # Subscribe to rover position
         self.odom_sub = self.create_subscription(
             VehicleOdometry,
             '/fmu/out/vehicle_odometry',
@@ -30,84 +45,76 @@ class TemperatureQuery(Node):
             qos_profile
         )
         
-        # Subscribe to temperature response
-        self.temp_sub = self.create_subscription(
-            Float32,
-            '/field/temperature_response',
-            self.temp_callback,
-            10
-        )
-        
-        # Publisher for temperature query
-        self.query_pub = self.create_publisher(PointStamped, '/field/query_position', 10)
-        
         # Current position
-        self.current_x = 0.0
-        self.current_y = 0.0
-        self.current_temp = None
+        self.current_x = 12.5
+        self.current_y = 12.5
         self.position_received = False
         
-        self.get_logger().info('working')
+        self.get_logger().info('Multi-Field Query initialized')
+        self.get_logger().info('Subscribing to temperature values from 5 field generators')
+    
+    def temp_callback(self, msg, field_key):
+        """Callback for temperature updates from field generators."""
+        self.fields[field_key]['temp'] = msg.data
     
     def odom_callback(self, msg):
-        """Get current rover position"""
+        """Get current rover position from PX4 odometry."""
         self.current_x = msg.position[0]
         self.current_y = msg.position[1]
         if not self.position_received:
             self.position_received = True
     
-    def temp_callback(self, msg):
-        """Receive temperature response"""
-        self.current_temp = msg.data
-    
-    def query_temperature(self):
-        """Query temperature at current rover position"""
+    def display_all_fields(self):
+        """Display all field temperature values."""
         if not self.position_received:
-            print("Waiting for rover position...")
+            print("\nWaiting for rover position from /fmu/out/vehicle_odometry...")
+            print("(Make sure PX4 simulation is running)")
             return
         
-        query = PointStamped()
-        query.header.stamp = self.get_clock().now().to_msg()
-        query.header.frame_id = 'odom'
-        query.point.x = float(self.current_x)
-        query.point.y = float(self.current_y)
-        query.point.z = 0.0
+        print(f"\nRover Position: ({self.current_x:.2f}, {self.current_y:.2f}) m\n")
         
-        self.query_pub.publish(query)
+        for field_key, field_info in self.fields.items():
+            temp = field_info['temp']
+            name = field_info['name']
+            color = field_info['color']
+            
+            if temp is not None:
+                print(f"{color}  {name:20s}: {temp:6.2f} °C{self.reset_color}")
+            else:
+                print(f"  {name:20s}: Waiting for data...")
         
-        # Wait briefly for response
-        time.sleep(0.1)
-        
-        if self.current_temp is not None:
-            print(f"Position: ({self.current_x:.2f}, {self.current_y:.2f}) | Temperature: {self.current_temp:.2f}°C")
-        else:
-            print(f"Position: ({self.current_x:.2f}, {self.current_y:.2f}) | Temperature: No data")
+        print("")
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = TemperatureQuery()
+    node = MultiFieldQuery()
     
     # Start ROS spinning in background
     ros_thread = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
     ros_thread.start()
     
-    # Wait for position
+    # Wait for initial data
+    import time
     time.sleep(1)
-
+    
+    print("\nMulti-Field Temperature Query")
+    print("Press ENTER to display all 5 field temperatures at rover position")
+    print("Type 'q' or 'quit' to exit\n")
     
     try:
         while rclpy.ok():
             user_input = input("").strip()
             
             if user_input.lower() in ['quit', 'q', 'exit']:
+                print("\nExiting...\n")
                 break
             
-            # Query on any input (including just pressing enter)
-            node.query_temperature()
+            # Display on any input (including just pressing enter)
+            node.display_all_fields()
     
     except KeyboardInterrupt:
-        pass
+        print("\n\nInterrupted. Exiting...\n")
     except EOFError:
         pass
     finally:

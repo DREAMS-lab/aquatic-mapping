@@ -1,1 +1,0 @@
-/home/blazar/rover_ws/build/control/ament_cmake_environment_hooks/local_setup.zsh

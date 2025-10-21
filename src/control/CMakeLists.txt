@@ -23,9 +23,17 @@ endif()
 # Install Python scripts
 install(PROGRAMS
   scripts/position_controller.py
-  scripts/field.py
   scripts/rover_monitor.py
   scripts/temp_query.py
+  scripts/lawnmower.py
+  scripts/record_field_data.py
+  scripts/fields/field_filter.py
+  scripts/fields/radial_field.py
+  scripts/fields/x_compress_field.py
+  scripts/fields/x_compress_tilt_field.py
+  scripts/fields/y_compress_field.py
+  scripts/fields/y_compress_tilt_field.py
+  scripts/fields/world_frame_publisher.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -1,0 +1,13 @@
+# Ignore everything
+*
+
+# Except gitignore itself
+!.gitignore
+
+# control
+!src/
+!src/control/
+!src/control/**
+
+!README.md
+
