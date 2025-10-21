@@ -30,13 +30,6 @@ def generate_launch_description():
     trial_number = LaunchConfiguration('trial_number')
 
     return LaunchDescription([
-        trial_number_arg,
-        LogInfo(msg='========================================================='),
-        LogInfo(msg=' Complete Mission System Launch'),
-        LogInfo(msg=' - Visualization + Fields + Recording + Mission'),
-        LogInfo(msg='========================================================='),
-
-        # ============ VISUALIZATION & TF ============
         # TF: world -> odom
         Node(
             package='tf2_ros',

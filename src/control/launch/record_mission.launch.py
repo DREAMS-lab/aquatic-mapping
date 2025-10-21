@@ -19,11 +19,6 @@ def generate_launch_description():
     
     return LaunchDescription([
         trial_number_arg,
-        
-        LogInfo(msg='========================================================='),
-        LogInfo(msg=' Starting Recording Mission'),
-        LogInfo(msg='========================================================='),
-        
         # Start all 5 field generators immediately
         Node(
             package='control',
