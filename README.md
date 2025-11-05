@@ -32,26 +32,32 @@ ros2 launch info_gain mi_planner.launch.py planner:=2   # MI + Distance
 
 ## Planner 1
 
-<img width="1800" height="600" alt="final_fields" src="https://github.com/user-attachments/assets/909e5f52-07fb-4a16-9fca-c95ec88d6d62" />
+<img width="1800" height="600" alt="final_fields" src="https://github.com/user-attachments/assets/d124c3da-c4cb-443b-8ffb-415f0981c5c6" />
 
-<img width="1200" height="800" alt="final_metrics" src="https://github.com/user-attachments/assets/7a3aa501-42cd-44f7-b3e1-710fee8aa9ff" />
+<img width="1200" height="800" alt="final_metrics" src="https://github.com/user-attachments/assets/0c837419-49f3-496a-b71c-223157bc0d6e" />
 
-<img width="1307" height="553" alt="1" src="https://github.com/user-attachments/assets/0265bca9-29a8-47ca-a2ec-c7a5e43436e2" />
+<img width="713" height="652" alt="corr" src="https://github.com/user-attachments/assets/f0574fa4-3d42-4bc2-ac17-a588409722dd" />
 
-> *RMSE: 0.406 °C* \
-> *MAE : 0.321 °C* \
-> *Corr: 0.987*
+<img width="1345" height="639" alt="1" src="https://github.com/user-attachments/assets/598d0899-f191-471b-9352-a6397f6ed962" />
+
+
+> *RMSE: 0.398 °C* \
+> *MAE : 0.308 °C* \
+> *Corr: 0.988*
 
 ## Planner 2
 
-<img width="1800" height="600" alt="final_fields" src="https://github.com/user-attachments/assets/4fe1d06a-bf4c-4bb7-8f2c-bc17054d3b91" />
+<img width="1800" height="600" alt="final_fields" src="https://github.com/user-attachments/assets/5d2dd49e-32af-4844-8b31-8f610844ebaa" />
 
-<img width="1200" height="800" alt="final_metrics" src="https://github.com/user-attachments/assets/7204e515-ef84-4063-89fa-3a87d26cf7f4" />
+<img width="1200" height="800" alt="final_metrics" src="https://github.com/user-attachments/assets/dc16e9c0-a5f6-4af3-bfc8-32cf2e80037b" />
 
-<img width="1321" height="679" alt="2" src="https://github.com/user-attachments/assets/f91496e1-299a-4478-804b-0d34a0868fde" />
+<img width="646" height="564" alt="corr" src="https://github.com/user-attachments/assets/3212ccaf-b067-465c-b357-c49192682665" />
+
+<img width="1197" height="587" alt="2" src="https://github.com/user-attachments/assets/3ab50d40-41d3-4366-a5ea-3c77b263d4b4" />
 
 
-> *RMSE: 0.394 °C* \
-> *MAE : 0.310 °C* \
-> *Corr: 0.988*
+
+> *RMSE: 1.084 °C* \
+> *MAE : 0.564 °C* \
+> *Corr: 0.935*
 
