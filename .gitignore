@@ -1,0 +1,17 @@
+# Ignore everything
+*
+
+# Except gitignore itself
+!.gitignore
+
+# control
+!src/
+!src/control/
+!src/control/**
+
+# info_gain
+!src/info_gain/
+!src/info_gain/**
+
+!README.md
+
