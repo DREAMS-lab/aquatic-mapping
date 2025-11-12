@@ -1,156 +1,140 @@
 #!/usr/bin/env python3
+import time, threading
+from collections import deque
+import numpy as np
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleOdometry
-import numpy as np
+from geometry_msgs.msg import PointStamped
 
+NEAR_RADIUS = 2.0
+STABLE_SECS = 3.0
+STD_THRESH  = 0.05
+WIN_SIZE    = 50  # 50*0.05s ≈ 2.5s window
 
-class SimpleWaypointSender(Node):
+class BaselineController(Node):
     def __init__(self):
-        super().__init__('simple_waypoint_sender')
-        
-        qos_profile = QoSProfile(
+        super().__init__('baseline_controller')
+        qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
+        self.pub_off = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos)
+        self.pub_sp  = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos)
+        self.pub_cmd = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos)
+        self.pub_tgt = self.create_publisher(PointStamped, '/circle/target_position', 10)
 
-        self.offboard_control_mode_pub = self.create_publisher(
-            OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
-        
-        self.trajectory_setpoint_pub = self.create_publisher(
-            TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
-        
-        self.vehicle_command_pub = self.create_publisher(
-            VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
+        self.sub_odom = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.cb_odom, qos)
 
-        self.odometry_sub = self.create_subscription(
-            VehicleOdometry, '/fmu/out/vehicle_odometry',
-            self.odometry_callback, qos_profile)
+        self.cur  = np.zeros(3)
+        self.goal = np.zeros(3)
+        self.have_odom = False
 
-        self.current_position = np.array([0.0, 0.0, 0.0])
-        self.target_position = np.array([0.0, 0.0, 0.0])
+        self.goal_active = False
+        self.near_since = None
+        self.hist = deque(maxlen=WIN_SIZE)
+
         self.counter = 0
-        self.position_received = False
-        
-        self.timer = self.create_timer(0.05, self.control_loop)
-        
-        self.get_logger().info('Waypoint Sender: Ready')
+        self.timer = self.create_timer(0.05, self.loop)
 
-    def odometry_callback(self, msg):
-        self.current_position = np.array([msg.position[0], msg.position[1], msg.position[2]])
-        
-        if not self.position_received:
-            x, y = self.current_position[0], self.current_position[1]
-            self.get_logger().info(f'Current position: X={x:.2f}m, Y={y:.2f}m')
-            self.position_received = True
+    def cb_odom(self, msg: VehicleOdometry):
+        self.cur[:] = [msg.position[0], msg.position[1], msg.position[2]]
+        self.have_odom = True
+        if not self.goal_active:
+            return
 
-    def control_loop(self):
-        offboard_msg = OffboardControlMode()
-        offboard_msg.position = True
-        offboard_msg.velocity = False
-        offboard_msg.acceleration = False
-        offboard_msg.attitude = False
-        offboard_msg.body_rate = False
-        offboard_msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.offboard_control_mode_pub.publish(offboard_msg)
-        
-        setpoint_msg = TrajectorySetpoint()
-        setpoint_msg.position = [
-            float(self.target_position[0]),
-            float(self.target_position[1]),
-            float(self.target_position[2])
-        ]
-        setpoint_msg.velocity = [float('nan')] * 3
-        setpoint_msg.yaw = float('nan')
-        setpoint_msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.trajectory_setpoint_pub.publish(setpoint_msg)
-        
+        dist = float(np.linalg.norm(self.cur[:2] - self.goal[:2]))
+        if dist < NEAR_RADIUS:
+            if self.near_since is None:
+                self.near_since = time.time()
+            self.hist.append(self.cur[:2].copy())
+            if len(self.hist) == self.hist.maxlen and (time.time() - self.near_since) >= STABLE_SECS:
+                std_xy = np.std(np.array(self.hist), axis=0)
+                if max(std_xy) < STD_THRESH:
+                    # final error measured ONLY to the typed goal (no hacks)
+                    print(f"FINAL_ERROR_BASELINE {dist:.3f}")
+                    # publish typed goal so your DataLogger writes a row
+                    tgt = PointStamped()
+                    tgt.header.stamp = self.get_clock().now().to_msg()
+                    tgt.header.frame_id = 'map'
+                    tgt.point.x, tgt.point.y, tgt.point.z = float(self.goal[0]), float(self.goal[1]), 0.0
+                    self.pub_tgt.publish(tgt)
+
+                    self.goal_active = False
+                    self.near_since = None
+                    self.hist.clear()
+        else:
+            self.near_since = None
+            self.hist.clear()
+
+    def loop(self):
+        o = OffboardControlMode()
+        o.position = True
+        o.velocity = o.acceleration = o.attitude = o.body_rate = False
+        o.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.pub_off.publish(o)
+
         if self.counter == 10:
-            self.engage_offboard_mode()
-            self.arm()
-            self.get_logger().info('Armed and in offboard mode')
-        
+            self._set_mode(); self._arm()
         self.counter += 1
 
-    def send_vehicle_command(self, command, param1=0.0, param2=0.0):
-        msg = VehicleCommand()
-        msg.param1 = param1
-        msg.param2 = param2
-        msg.command = command
-        msg.target_system = 1
-        msg.target_component = 1
-        msg.source_system = 1
-        msg.source_component = 1
-        msg.from_external = True
-        msg.timestamp = int(self.get_clock().now().nanoseconds / 1000)
-        self.vehicle_command_pub.publish(msg)
-
-    def arm(self):
-        self.send_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=1.0)
-
-    def disarm(self):
-        self.send_vehicle_command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, param1=0.0)
-
-    def engage_offboard_mode(self):
-        self.send_vehicle_command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, param1=1.0, param2=6.0)
+        sp = TrajectorySetpoint()
+        sp.position = [float(self.goal[0]), float(self.goal[1]), 0.0]
+        sp.velocity = [float('nan')]*3
+        sp.yaw = float('nan')
+        sp.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.pub_sp.publish(sp)
 
     def go_to(self, x, y):
-        self.target_position = np.array([x, y, 0.0])
-        self.get_logger().info(f'Target: X={x}m, Y={y}m')
+        self.goal[:] = [x, y, 0.0]
+        self.goal_active = True
+        self.near_since = None
+        self.hist.clear()
+        print(f"SEND_BASELINE {x:.2f} {y:.2f}")
 
+    # MAVLink helpers
+    def _cmd(self, c, p1=0.0, p2=0.0):
+        m = VehicleCommand()
+        m.param1, m.param2 = float(p1), float(p2)
+        m.command = c
+        m.target_system = 1
+        m.target_component = 1
+        m.source_system = 1
+        m.source_component = 1
+        m.from_external = True
+        m.timestamp = int(self.get_clock().now().nanoseconds / 1000)
+        self.pub_cmd.publish(m)
+    def _arm(self):      self._cmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
+    def _disarm(self):   self._cmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
+    def _set_mode(self): self._cmd(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
 
 def main(args=None):
     rclpy.init(args=args)
-    node = SimpleWaypointSender()
-    
-    import threading
-    ros_thread = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
-    ros_thread.start()
-    
-    import time
-    time.sleep(2)
-    
+    node = BaselineController()
+    th = threading.Thread(target=rclpy.spin, args=(node,), daemon=True); th.start()
+    time.sleep(0.5)
     try:
         while rclpy.ok():
-            time.sleep(0.1)
-            user_input = input("Enter X Y: ").strip()
-            
-            if user_input.lower() in ['quit', 'q', 'exit']:
-                break
-            
+            s = input("Enter X Y (q to quit): ").strip()
+            if s.lower() in ('q','quit','exit'): break
             try:
-                parts = user_input.split()
-                if len(parts) != 2:
-                    print("Enter 2 numbers")
-                    continue
-                
-                x = float(parts[0])
-                y = float(parts[1])
-                
-                node.go_to(x, y)
-                print(f"Going to ({x}, {y})")
-                
-            except ValueError:
-                print("Invalid input")
-            except EOFError:
-                break
-    
+                x, y = map(float, s.split())
+            except Exception:
+                print("bad input"); continue
+            node.go_to(x, y)
     except KeyboardInterrupt:
         pass
-    
     finally:
-        print("\nShutting down...")
-        try:
-            node.disarm()
-        except:
-            pass
-        node.destroy_node()
-        rclpy.shutdown()
+        try: node._disarm()
+        except: pass
+        try: node.destroy_node()
+        finally:
+            if rclpy.ok(): rclpy.shutdown()
+        th.join(timeout=1.0)
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

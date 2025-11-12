@@ -19,6 +19,7 @@ class RadialFieldGenerator(Node):
         self.center_y = 12.5
         self.base_temperature = 20.0
         self.hotspot_amplitude = 10.0
+        self.measurement_noise = 0.5  # Standard deviation of measurement noise (°C)
         self.current_pos = None
         
         # Noise parameter for sensor measurements
@@ -78,9 +79,12 @@ class RadialFieldGenerator(Node):
         if self.current_pos is None:
             return
         temp = self.sample_field(self.current_pos[0], self.current_pos[1])
+        # Add measurement noise (Gaussian noise)
+        noisy_temp = temp + np.random.normal(0.0, self.measurement_noise)
         # Add Gaussian noise to simulate sensor measurement noise
         noisy_temp = temp + np.random.normal(0.0, self.noise_std)
         msg = Float32()
+        msg.data = noisy_temp
         msg.data = noisy_temp
         self.temp_pub.publish(msg)
     
