@@ -198,7 +198,7 @@ def run_single_field(field_type, trial_number, method='all'):
 
     # data paths
     data_dir = Path(__file__).parent.parent / 'src' / 'sampling' / 'data' / 'missions'
-    csv_path = data_dir / field_type / f'trial_{trial_number}' / f'{field_type}_samples.csv'
+    csv_path = data_dir / f'trial_{trial_number}' / field_type / f'{field_type}_samples.csv'
 
     if not csv_path.exists():
         print(f"ERROR: data not found at {csv_path}")

@@ -28,6 +28,7 @@ results/
 
 # Archive and temporary
 archive/
+infra/
 
 # IDE
 .vscode/

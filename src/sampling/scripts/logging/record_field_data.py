@@ -23,7 +23,7 @@ class FieldDataRecorder(Node):
         # Setup paths
         workspace_root = os.path.expanduser('~/workspaces/aquatic-mapping')
         trial_folder = os.path.join(workspace_root, 'src', 'sampling', 'data', 'missions',
-                                    field_name, f'trial_{trial_number}')
+                                    f'trial_{trial_number}', field_name)
         os.makedirs(trial_folder, exist_ok=True)
 
         self.bag_path = os.path.join(trial_folder, f'{field_name}_bag')

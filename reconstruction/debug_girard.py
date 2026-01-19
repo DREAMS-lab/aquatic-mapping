@@ -12,7 +12,7 @@ from girard_uncertain_input import ExpectedRBFKernel
 
 # Load training data
 data_dir = Path(__file__).parent.parent / 'src' / 'sampling' / 'data' / 'missions'
-csv_path = data_dir / 'radial' / 'trial_1' / 'radial_samples.csv'
+csv_path = data_dir / 'trial_1' / 'radial' / 'radial_samples.csv'
 
 x_samples, y_samples, temp_samples, position_cov = load_sample_data(csv_path)
 print(f"Loaded {len(x_samples)} samples")
