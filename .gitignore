@@ -1,17 +1,41 @@
-# Ignore everything
-*
+# ROS 2 build artifacts
+build/
+install/
+log/
+*.egg-info/
 
-# Except gitignore itself
-!.gitignore
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+*.egg
 
-# control
-!src/
-!src/control/
-!src/control/**
+# Data files
+*.bag
+*.mcap
+*.csv
+*.npz
+*.npy
+data/
+results/
+*.png
+*.jpg
+*.jpeg
 
-# info_gain
-!src/info_gain/
-!src/info_gain/**
+# Archive and temporary
+archive/
 
-!README.md
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
+# OS
+.DS_Store
+Thumbs.db
