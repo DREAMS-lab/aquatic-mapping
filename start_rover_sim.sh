@@ -57,7 +57,7 @@ sleep 2
 $TERM_CMD bash -c "
     echo 'waiting 10s for px4...';
     sleep 10;
-    MicroXRCEAgent udp4 -p 8888
+    micro-xrce-dds-agent udp4 -p 8888
 " &
 PID2=$!
 
