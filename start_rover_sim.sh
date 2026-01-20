@@ -57,20 +57,30 @@ sleep 2
 $TERM_CMD bash -c "
     echo 'waiting 10s for px4...';
     sleep 10;
-    micro-xrce-dds-agent udp4 -p 8888
+    MicroXRCEAgent udp4 -p 8888
 " &
 PID2=$!
 
 sleep 1
 
 # window 3: ros2 launch
-$TERM_CMD bash -c "
-    cd $WORKSPACE_DIR;
-    source install/setup.bash;
-    echo 'waiting 15s for px4 and dds...';
-    sleep 15;
-    $ROS_CMD
-" &
+if [ "$LAUNCH_FILE" = "mission" ]; then
+    $TERM_CMD bash -c "
+        cd $WORKSPACE_DIR;
+        source install/setup.bash;
+        echo 'waiting 15s for px4 and dds...';
+        sleep 15;
+        ros2 launch sampling mission.launch.py trial_number:=$TRIAL_NUMBER
+    " &
+else
+    $TERM_CMD bash -c "
+        cd $WORKSPACE_DIR;
+        source install/setup.bash;
+        echo 'waiting 15s for px4 and dds...';
+        sleep 15;
+        ros2 launch sampling ${LAUNCH_FILE}.launch.py
+    " &
+fi
 PID3=$!
 
 echo "✓ Started 3 terminals:"

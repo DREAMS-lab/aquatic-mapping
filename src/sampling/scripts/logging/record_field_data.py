@@ -20,8 +20,22 @@ class FieldDataRecorder(Node):
         self.field_name = field_name
         self.trial_number = trial_number
 
-        # Setup paths
-        workspace_root = os.path.expanduser('~/workspaces/aquatic-mapping')
+        # Setup paths - use AQUATIC_WORKSPACE env var if set, otherwise detect location
+        workspace_root = os.environ.get('AQUATIC_WORKSPACE')
+        if not workspace_root:
+            # Check common locations
+            possible_paths = [
+                '/home/simuser/aquatic-mapping',  # Docker container
+                os.path.expanduser('~/workspaces/aquatic-mapping'),  # Local dev
+                os.path.expanduser('~/aquatic-mapping'),  # Alternative local
+            ]
+            for path in possible_paths:
+                if os.path.exists(path):
+                    workspace_root = path
+                    break
+            else:
+                workspace_root = os.path.expanduser('~/workspaces/aquatic-mapping')
+
         trial_folder = os.path.join(workspace_root, 'src', 'sampling', 'data', 'missions',
                                     f'trial_{trial_number}', field_name)
         os.makedirs(trial_folder, exist_ok=True)
@@ -83,6 +97,8 @@ class FieldDataRecorder(Node):
         self.record_timer = self.create_timer(1.0, self.record_data_point)
 
         self.get_logger().info(f'Recorder initialized: {field_name}, trial {trial_number}')
+        self.get_logger().info(f'Workspace: {workspace_root}')
+        self.get_logger().info(f'Data folder: {trial_folder}')
         self.get_logger().info(f'Waiting for rover to reach first waypoint ({self.first_waypoint[0]}, {self.first_waypoint[1]})...')
 
     def odom_callback(self, msg):
