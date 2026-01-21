@@ -6,12 +6,14 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleOdometry
 import numpy as np
 import time
+import os
+import sys
 
 
 class LawnmowerMission(Node):
     def __init__(self):
         super().__init__('lawnmower_mission')
-        
+
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -21,10 +23,10 @@ class LawnmowerMission(Node):
 
         self.offboard_control_mode_pub = self.create_publisher(
             OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
-        
+
         self.trajectory_setpoint_pub = self.create_publisher(
             TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
-        
+
         self.vehicle_command_pub = self.create_publisher(
             VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
 
@@ -38,14 +40,23 @@ class LawnmowerMission(Node):
         self.mission_started = False
         self.mission_complete = False
         self.start_time = None
-        
+
+        # Auto-shutdown configuration
+        # Set AUTO_STOP=0 to disable auto-shutdown after mission complete
+        self.auto_stop = os.environ.get('AUTO_STOP', '1') == '1'
+        self.shutdown_delay = int(os.environ.get('SHUTDOWN_DELAY', '10'))  # seconds after mission complete
+        self.shutdown_counter = None
+        self.shutdown_requested = False
+
         # Generate lawnmower waypoints
         self.waypoints = self.generate_lawnmower_waypoints()
         self.current_target = self.waypoints[0]
-        
+
         self.timer = self.create_timer(0.05, self.control_loop)
-        
+
         self.get_logger().info(f'Lawnmower Mission: {len(self.waypoints)} waypoints generated')
+        if self.auto_stop:
+            self.get_logger().info(f'Auto-stop enabled: will shutdown {self.shutdown_delay}s after mission complete')
 
     def generate_lawnmower_waypoints(self):
         """Generate lawnmower pattern with 2.5m border buffer and 5m row spacing."""
@@ -142,16 +153,29 @@ class LawnmowerMission(Node):
                     f'({self.current_target[0]:.1f}, {self.current_target[1]:.1f})'
                 )
         
-        # Mission complete - just hold position and log once
+        # Mission complete - hold position and optionally auto-shutdown
         if self.waypoint_idx >= len(self.waypoints) - 1 and not self.mission_complete:
             distance = np.linalg.norm(self.current_position[:2] - self.current_target[:2])
             if distance < 0.5:
                 self.mission_complete = True
                 self.get_logger().info('='*60)
                 self.get_logger().info('MISSION COMPLETE! Returned to (0, 0)')
-                self.get_logger().info('Holding position. Press Ctrl+C to stop.')
+                if self.auto_stop:
+                    self.get_logger().info(f'Auto-shutdown in {self.shutdown_delay} seconds...')
+                    self.shutdown_counter = self.shutdown_delay * 20  # 20 Hz timer
+                else:
+                    self.get_logger().info('Holding position. Press Ctrl+C to stop.')
                 self.get_logger().info('='*60)
-        
+
+        # Handle auto-shutdown countdown
+        if self.shutdown_counter is not None and not self.shutdown_requested:
+            self.shutdown_counter -= 1
+            if self.shutdown_counter <= 0:
+                self.shutdown_requested = True
+                self.get_logger().info('AUTO-STOP: Shutting down ROS node...')
+                # Request shutdown - will be handled in main()
+                raise SystemExit(0)
+
         self.counter += 1
 
     def send_vehicle_command(self, command, param1=0.0, param2=0.0):
@@ -177,14 +201,18 @@ class LawnmowerMission(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = LawnmowerMission()
-    
+
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        pass
+        node.get_logger().info('Interrupted by user')
+    except SystemExit as e:
+        # Auto-shutdown triggered
+        node.get_logger().info('Mission auto-shutdown complete')
     finally:
         node.destroy_node()
         rclpy.shutdown()
+        sys.exit(0)
 
 
 if __name__ == '__main__':

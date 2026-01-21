@@ -23,6 +23,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
+import re
 
 # Get absolute paths
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -96,6 +97,73 @@ class ReconstructionRequest(BaseModel):
 
 # Store for running reconstructions
 reconstruction_processes = {}
+
+# ============================================================================
+# Batch Manager - Continuous batch execution with auto-start
+# ============================================================================
+class BatchManager:
+    def __init__(self):
+        self.active_batch = None
+        self.pending_trials = []
+        self.completed_trials = []
+        self.failed_trials = []
+        self.concurrent_limit = 3
+        self.running = False
+        self._task = None
+
+    def start_batch(self, start_trial: int, end_trial: int, concurrent: int):
+        """Initialize a new batch job"""
+        self.pending_trials = list(range(start_trial, end_trial + 1))
+        self.completed_trials = []
+        self.failed_trials = []
+        self.concurrent_limit = concurrent
+        self.active_batch = {
+            "start_trial": start_trial,
+            "end_trial": end_trial,
+            "concurrent": concurrent,
+            "total": end_trial - start_trial + 1,
+            "started_at": datetime.now().isoformat()
+        }
+        self.running = True
+
+    def stop_batch(self):
+        """Cancel the active batch"""
+        self.running = False
+        self.pending_trials = []
+        self.active_batch = None
+
+    def get_status(self):
+        """Get current batch status"""
+        if not self.active_batch:
+            return {"active": False}
+
+        return {
+            "active": self.running,
+            "batch": self.active_batch,
+            "pending": len(self.pending_trials),
+            "pending_trials": self.pending_trials[:10],  # First 10 for display
+            "completed": len(self.completed_trials),
+            "completed_trials": self.completed_trials,
+            "failed": len(self.failed_trials),
+            "failed_trials": self.failed_trials,
+            "progress": round((len(self.completed_trials) + len(self.failed_trials)) / self.active_batch["total"] * 100, 1) if self.active_batch else 0
+        }
+
+    def mark_completed(self, trial_id: int):
+        """Mark a trial as completed"""
+        if trial_id in self.pending_trials:
+            self.pending_trials.remove(trial_id)
+        if trial_id not in self.completed_trials:
+            self.completed_trials.append(trial_id)
+
+    def mark_failed(self, trial_id: int):
+        """Mark a trial as failed"""
+        if trial_id in self.pending_trials:
+            self.pending_trials.remove(trial_id)
+        if trial_id not in self.failed_trials:
+            self.failed_trials.append(trial_id)
+
+batch_manager = BatchManager()
 
 # Store for active connections
 class ConnectionManager:
@@ -193,28 +261,134 @@ async def remove_trial(trial_id: int, username: str = Depends(verify_credentials
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/batch/start")
-async def start_batch(batch: BatchRequest, username: str = Depends(verify_credentials)):
-    """Start a batch of trials"""
-    try:
-        started = []
-        for trial_id in range(batch.start_trial, batch.end_trial + 1):
-            # Check how many are running
-            running = len([c for c in get_simulation_containers() if c["status"] == "running"])
-            if running >= batch.concurrent:
-                break
-            start_single_trial(trial_id)
-            started.append(trial_id)
+async def batch_monitor_task():
+    """Background task that monitors containers and starts new trials as capacity becomes available"""
+    while batch_manager.running and (batch_manager.pending_trials or get_running_trial_count() > 0):
+        try:
+            containers = get_simulation_containers()
+            running_trials = [c for c in containers if c["status"] == "running"]
+            running_count = len(running_trials)
+            running_trial_ids = [c["trial_id"] for c in running_trials]
 
-        await manager.broadcast({"event": "batch_started", "trials": started})
-        return {"success": True, "started": started, "message": f"Started {len(started)} trials"}
+            # Check for completed containers (exited but data exists)
+            for container in containers:
+                if container["status"] == "exited":
+                    trial_id = container["trial_id"]
+                    # Check if data was saved (successful completion)
+                    data_dir = os.path.expanduser(f"~/workspaces/aquatic-mapping/src/sampling/data/missions/trial_{trial_id}")
+                    if os.path.exists(data_dir) and any(f.endswith('_samples.csv') for root, dirs, files in os.walk(data_dir) for f in files):
+                        batch_manager.mark_completed(trial_id)
+                    else:
+                        batch_manager.mark_failed(trial_id)
+
+            # Start new trials if capacity is available
+            while running_count < batch_manager.concurrent_limit and batch_manager.pending_trials:
+                next_trial = batch_manager.pending_trials[0]
+                try:
+                    start_single_trial(next_trial)
+                    batch_manager.pending_trials.pop(0)  # Remove from pending after successful start
+                    running_count += 1
+                    await manager.broadcast({
+                        "event": "trial_started",
+                        "trial_id": next_trial,
+                        "batch_status": batch_manager.get_status()
+                    })
+                except Exception as e:
+                    print(f"Failed to start trial {next_trial}: {e}")
+                    batch_manager.mark_failed(next_trial)
+
+            # Broadcast batch status update
+            await manager.broadcast({
+                "event": "batch_update",
+                "batch_status": batch_manager.get_status()
+            })
+
+            # Check if batch is complete
+            if not batch_manager.pending_trials and running_count == 0:
+                batch_manager.running = False
+                await manager.broadcast({
+                    "event": "batch_complete",
+                    "batch_status": batch_manager.get_status()
+                })
+                break
+
+        except Exception as e:
+            print(f"Batch monitor error: {e}")
+
+        await asyncio.sleep(5)  # Check every 5 seconds
+
+def get_running_trial_count():
+    """Get count of running trial containers"""
+    if not docker_client:
+        return 0
+    return len([c for c in get_simulation_containers() if c["status"] == "running"])
+
+@app.post("/api/batch/start")
+async def start_batch(batch: BatchRequest, background_tasks=None, username: str = Depends(verify_credentials)):
+    """Start a batch of trials with continuous monitoring"""
+    if not docker_client:
+        raise HTTPException(status_code=500, detail="Docker not available")
+
+    # Stop any existing batch
+    if batch_manager.running:
+        batch_manager.stop_batch()
+
+    try:
+        # Initialize batch manager
+        batch_manager.start_batch(batch.start_trial, batch.end_trial, batch.concurrent)
+
+        # Start initial trials up to concurrent limit
+        started = []
+        running_count = get_running_trial_count()
+
+        while running_count < batch.concurrent and batch_manager.pending_trials:
+            next_trial = batch_manager.pending_trials.pop(0)
+            try:
+                start_single_trial(next_trial)
+                started.append(next_trial)
+                running_count += 1
+            except Exception as e:
+                batch_manager.mark_failed(next_trial)
+                print(f"Failed to start trial {next_trial}: {e}")
+
+        # Start background monitoring task
+        asyncio.create_task(batch_monitor_task())
+
+        await manager.broadcast({
+            "event": "batch_started",
+            "trials": started,
+            "batch_status": batch_manager.get_status()
+        })
+
+        return {
+            "success": True,
+            "started": started,
+            "total": batch.end_trial - batch.start_trial + 1,
+            "pending": len(batch_manager.pending_trials),
+            "message": f"Batch started: {len(started)} trials running, {len(batch_manager.pending_trials)} pending"
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/batch/status")
+async def get_batch_status(username: str = Depends(verify_credentials)):
+    """Get current batch status"""
+    return batch_manager.get_status()
+
+@app.post("/api/batch/cancel")
+async def cancel_batch(username: str = Depends(verify_credentials)):
+    """Cancel the active batch (doesn't stop running containers)"""
+    batch_manager.stop_batch()
+    await manager.broadcast({"event": "batch_cancelled"})
+    return {"success": True, "message": "Batch cancelled - running containers will continue"}
+
 @app.post("/api/batch/stop")
 async def stop_all(username: str = Depends(verify_credentials)):
-    """Stop all running trials"""
+    """Stop all running trials and cancel batch"""
     try:
+        # Cancel batch first
+        batch_manager.stop_batch()
+
         stopped = []
         for container in docker_client.containers.list():
             if container.name.startswith("aquatic-trial-"):
@@ -767,6 +941,31 @@ async def websocket_endpoint(websocket: WebSocket):
 # Helper Functions
 # ============================================================================
 
+def parse_mission_progress(logs: str) -> dict:
+    """Parse container logs to extract mission progress"""
+    progress = {
+        "current_waypoint": 0,
+        "total_waypoints": 0,
+        "mission_complete": False,
+        "progress_percent": 0
+    }
+
+    # Find the latest waypoint progress line
+    # Format: "Waypoint 5/25: (x, y)"
+    waypoint_matches = re.findall(r'Waypoint (\d+)/(\d+):', logs)
+    if waypoint_matches:
+        last_match = waypoint_matches[-1]
+        progress["current_waypoint"] = int(last_match[0])
+        progress["total_waypoints"] = int(last_match[1])
+        progress["progress_percent"] = round((int(last_match[0]) / int(last_match[1])) * 100, 1)
+
+    # Check if mission is complete
+    if 'MISSION COMPLETE!' in logs:
+        progress["mission_complete"] = True
+        progress["progress_percent"] = 100
+
+    return progress
+
 def get_simulation_containers():
     """Get all simulation containers and their status"""
     if not docker_client:
@@ -780,6 +979,7 @@ def get_simulation_containers():
             # Get container stats
             status = container.status
             stats = {}
+            mission_progress = {}
 
             if status == "running":
                 try:
@@ -804,6 +1004,13 @@ def get_simulation_containers():
                 except:
                     pass
 
+                # Get mission progress from logs
+                try:
+                    logs = container.logs(tail=50).decode('utf-8')
+                    mission_progress = parse_mission_progress(logs)
+                except:
+                    pass
+
             # Get VNC port
             vnc_port = None
             try:
@@ -819,6 +1026,7 @@ def get_simulation_containers():
                 "status": status,
                 "vnc_port": vnc_port,
                 "stats": stats,
+                "mission": mission_progress,
                 "created": container.attrs['Created']
             })
 
