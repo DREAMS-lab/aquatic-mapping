@@ -745,8 +745,8 @@ async def get_reconstruction_images(trial_id: int, username: str = Depends(verif
     return {"trial_id": trial_id, "images": images}
 
 @app.get("/api/reconstruct/{trial_id}/image/{image_path:path}")
-async def get_reconstruction_image(trial_id: int, image_path: str, username: str = Depends(verify_credentials)):
-    """Serve a reconstruction result image"""
+async def get_reconstruction_image(trial_id: int, image_path: str):
+    """Serve a reconstruction result image (no auth - public images)"""
     results_dir = os.path.expanduser(f"~/workspaces/aquatic-mapping/reconstruction/results/trial_{trial_id}")
     full_path = os.path.join(results_dir, image_path)
 
