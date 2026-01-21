@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-black">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Field Sampler - Simulation Control</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        [x-cloak] { display: none !important; }
+        .glass {
+            background: rgba(20, 20, 20, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(251, 146, 60, 0.2);
+        }
+        .glass-dark {
+            background: rgba(10, 10, 10, 0.95);
+            border: 1px solid rgba(251, 146, 60, 0.1);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #f97316, #eab308);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .gradient-border {
+            border: 2px solid transparent;
+            background: linear-gradient(#0a0a0a, #0a0a0a) padding-box,
+                        linear-gradient(135deg, #f97316, #eab308) border-box;
+        }
+        .pulse-dot {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .progress-bar {
+            transition: width 0.5s ease-in-out;
+        }
+        .glow-orange {
+            box-shadow: 0 0 20px rgba(249, 115, 22, 0.3);
+        }
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+        }
+    </style>
+</head>
+<body class="h-full text-gray-100" x-data="dashboard()" x-init="init()">
+    <div class="min-h-full">
+        <!-- Header -->
+        <header class="glass-dark sticky top-0 z-50 border-b border-orange-500/20">
+            <div class="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <a href="/" class="text-gray-500 hover:text-orange-400 transition-colors" title="Back to Home">
+                            <i class="fas fa-arrow-left text-xl"></i>
+                        </a>
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-yellow-500 flex items-center justify-center glow-orange">
+                                <i class="fas fa-flask text-black text-xl"></i>
+                            </div>
+                            <div>
+                                <h1 class="text-2xl font-bold gradient-text">Field Sampler</h1>
+                                <p class="text-xs text-gray-500">Autonomous Spatial Field Reconstruction</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-6">
+                        <!-- Navigation -->
+                        <nav class="flex items-center gap-4">
+                            <button @click="currentTab = 'simulations'"
+                                :class="currentTab === 'simulations' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-400 hover:text-orange-300'"
+                                class="pb-1 text-sm font-medium transition-all">
+                                <i class="fas fa-server mr-1"></i> Simulations
+                            </button>
+                            <button @click="currentTab = 'reconstruction'"
+                                :class="currentTab === 'reconstruction' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-400 hover:text-orange-300'"
+                                class="pb-1 text-sm font-medium transition-all">
+                                <i class="fas fa-chart-area mr-1"></i> Reconstruction
+                            </button>
+                            <button @click="currentTab = 'host'"
+                                :class="currentTab === 'host' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-400 hover:text-orange-300'"
+                                class="pb-1 text-sm font-medium transition-all">
+                                <i class="fas fa-desktop mr-1"></i> Host PC
+                            </button>
+                        </nav>
+                        <div class="flex items-center gap-2 text-sm text-gray-400">
+                            <span class="w-2 h-2 rounded-full pulse-dot" :class="connected ? 'bg-green-500' : 'bg-red-500'"></span>
+                            <span x-text="connected ? 'Live' : 'Offline'"></span>
+                        </div>
+                        <div class="text-sm text-orange-400">
+                            <i class="fas fa-user mr-1"></i> {{ username }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+            <!-- System Stats Bar -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+                <div class="glass rounded-2xl p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-gray-400 text-sm">CPU</span>
+                        <i class="fas fa-microchip text-orange-400"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-white" x-text="system.cpu_percent + '%'">0%</div>
+                    <div class="mt-2 h-2 bg-gray-800 rounded-full overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-orange-600 to-orange-400 progress-bar" :style="'width: ' + system.cpu_percent + '%'"></div>
+                    </div>
+                </div>
+                <div class="glass rounded-2xl p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-gray-400 text-sm">Memory</span>
+                        <i class="fas fa-memory text-yellow-400"></i>
+                    </div>
+                    <div class="text-2xl font-bold text-white" x-text="system.memory_used_gb + '/' + system.memory_total_gb + ' GB'">0/0 GB</div>
+                    <div class="mt-2 h-2 bg-gray-800 rounded-full overflow-hidden">
+                        <div class="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 progress-bar" :style="'width: ' + system.memory_percent + '%'"></div>
+                    </div>
+                </div>
+                <div class="glass rounded-2xl p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-gray-400 text-sm">GPU</span>
+                        <i class="fas fa-bolt text-orange-400"></i>
+                    </div>
+                    <template x-if="system.gpu">
+                        <div>
+                            <div class="text-2xl font-bold text-white" x-text="system.gpu.utilization + '%'">0%</div>
+                            <div class="mt-2 h-2 bg-gray-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-orange-600 to-yellow-400 progress-bar" :style="'width: ' + system.gpu.utilization + '%'"></div>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="!system.gpu"><div class="text-gray-500">No GPU</div></template>
+                </div>
+                <div class="glass rounded-2xl p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-gray-400 text-sm">GPU Memory</span>
+                        <i class="fas fa-database text-yellow-400"></i>
+                    </div>
+                    <template x-if="system.gpu">
+                        <div>
+                            <div class="text-2xl font-bold text-white" x-text="Math.round(system.gpu.memory_used_mb/1024*10)/10 + '/' + Math.round(system.gpu.memory_total_mb/1024*10)/10 + ' GB'">0/0 GB</div>
+                            <div class="mt-2 h-2 bg-gray-800 rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-yellow-600 to-orange-400 progress-bar" :style="'width: ' + (system.gpu.memory_used_mb / system.gpu.memory_total_mb * 100) + '%'"></div>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="!system.gpu"><div class="text-gray-500">-</div></template>
+                </div>
+            </div>
+
+            <!-- Tab: Simulations -->
+            <div x-show="currentTab === 'simulations'" x-cloak>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <!-- Left: Controls -->
+                    <div class="lg:col-span-1 space-y-6">
+                        <!-- New Batch -->
+                        <div class="glass rounded-2xl p-6">
+                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-play-circle text-orange-400"></i>
+                                Start Trial Batch
+                            </h2>
+                            <div class="space-y-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="text-sm text-gray-400 block mb-1">Start</label>
+                                        <input type="number" x-model="batchStart" min="1"
+                                            class="w-full bg-black border border-orange-500/30 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none">
+                                    </div>
+                                    <div>
+                                        <label class="text-sm text-gray-400 block mb-1">End</label>
+                                        <input type="number" x-model="batchEnd" min="1"
+                                            class="w-full bg-black border border-orange-500/30 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-sm text-gray-400 block mb-1">Concurrent: <span class="text-orange-400" x-text="concurrent"></span></label>
+                                    <input type="range" x-model="concurrent" min="1" max="5"
+                                        class="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-orange-500">
+                                </div>
+                                <button @click="startBatch()" :disabled="loading"
+                                    class="w-full py-3 bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-500 hover:to-yellow-500 text-black font-bold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 glow-orange">
+                                    <i class="fas fa-rocket"></i>
+                                    <span x-text="loading ? 'Starting...' : 'Launch Batch'"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions -->
+                        <div class="glass rounded-2xl p-6">
+                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-bolt text-yellow-400"></i>
+                                Quick Actions
+                            </h2>
+                            <div class="space-y-3">
+                                <button @click="startSingleTrial()"
+                                    class="w-full py-2 bg-orange-600/20 border border-orange-500/50 hover:bg-orange-600/30 text-orange-400 rounded-lg transition-all flex items-center justify-center gap-2">
+                                    <i class="fas fa-plus"></i> Single Trial
+                                </button>
+                                <button @click="stopAll()"
+                                    class="w-full py-2 bg-red-600/20 border border-red-500/50 hover:bg-red-600/30 text-red-400 rounded-lg transition-all flex items-center justify-center gap-2">
+                                    <i class="fas fa-stop"></i> Stop All
+                                </button>
+                                <button @click="refreshStatus()"
+                                    class="w-full py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-all flex items-center justify-center gap-2">
+                                    <i class="fas fa-sync-alt"></i> Refresh
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Trials -->
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Active Trials -->
+                        <div class="glass rounded-2xl p-6">
+                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-server text-orange-400"></i>
+                                Active Trials
+                                <span class="ml-auto text-sm font-normal text-gray-400" x-text="containers.filter(c => c.status === 'running').length + ' running'"></span>
+                            </h2>
+                            <div class="space-y-3" x-show="containers.length > 0">
+                                <template x-for="container in containers" :key="container.name">
+                                    <div class="bg-black/50 rounded-xl p-4 border border-orange-500/20">
+                                        <div class="flex items-center justify-between mb-3">
+                                            <div class="flex items-center gap-3">
+                                                <div class="w-10 h-10 rounded-lg flex items-center justify-center"
+                                                    :class="container.status === 'running' ? 'bg-orange-500/20' : 'bg-gray-700/50'">
+                                                    <i class="fas fa-cube" :class="container.status === 'running' ? 'text-orange-400' : 'text-gray-500'"></i>
+                                                </div>
+                                                <div>
+                                                    <div class="font-semibold text-white" x-text="'Trial ' + container.trial_id"></div>
+                                                    <div class="text-xs" :class="container.status === 'running' ? 'text-green-400' : 'text-gray-500'" x-text="container.status"></div>
+                                                </div>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <template x-if="container.status === 'running' && container.vnc_port">
+                                                    <a :href="getTrialVncUrl(container.trial_id, container.vnc_port)" target="_blank"
+                                                        class="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 text-black text-sm font-medium rounded-lg transition-all flex items-center gap-1">
+                                                        <i class="fas fa-desktop"></i> VNC
+                                                    </a>
+                                                </template>
+                                                <template x-if="container.status === 'running'">
+                                                    <button @click="stopTrial(container.trial_id)"
+                                                        class="px-3 py-1.5 bg-red-600/80 hover:bg-red-500 text-white text-sm rounded-lg transition-all">
+                                                        <i class="fas fa-stop"></i>
+                                                    </button>
+                                                </template>
+                                                <template x-if="container.status !== 'running'">
+                                                    <button @click="removeTrial(container.trial_id)"
+                                                        class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-all">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </template>
+                                            </div>
+                                        </div>
+                                        <template x-if="container.status === 'running' && container.stats">
+                                            <div class="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <div class="text-xs text-gray-500 mb-1">CPU <span class="text-orange-400" x-text="(container.stats.cpu_percent || 0) + '%'"></span></div>
+                                                    <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                                                        <div class="h-full bg-orange-500 progress-bar" :style="'width: ' + (container.stats.cpu_percent || 0) + '%'"></div>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div class="text-xs text-gray-500 mb-1">MEM <span class="text-yellow-400" x-text="(container.stats.mem_usage_mb || 0) + ' MB'"></span></div>
+                                                    <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                                                        <div class="h-full bg-yellow-500 progress-bar" :style="'width: ' + (container.stats.mem_percent || 0) + '%'"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                            <div x-show="containers.length === 0" class="text-center py-12">
+                                <i class="fas fa-inbox text-4xl text-gray-700 mb-3"></i>
+                                <p class="text-gray-500">No active containers</p>
+                            </div>
+                        </div>
+
+                        <!-- Completed Trials -->
+                        <div class="glass rounded-2xl p-6">
+                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-check-circle text-green-400"></i>
+                                Completed Trials
+                            </h2>
+                            <div class="space-y-2" x-show="completedTrials.length > 0">
+                                <template x-for="trial in completedTrials" :key="trial.id">
+                                    <div class="bg-black/50 rounded-lg p-3 flex items-center justify-between border border-green-500/20">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-8 h-8 rounded bg-green-500/20 flex items-center justify-center">
+                                                <i class="fas fa-check text-green-400 text-sm"></i>
+                                            </div>
+                                            <div>
+                                                <div class="text-white font-medium" x-text="'Trial ' + trial.id"></div>
+                                                <div class="text-xs text-gray-400" x-text="trial.field_count + ' fields'"></div>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <a :href="'/api/download/' + trial.id"
+                                                class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm rounded-lg transition-all flex items-center gap-1">
+                                                <i class="fas fa-download"></i> ZIP
+                                            </a>
+                                            <button @click="runReconstruction(trial.id)"
+                                                class="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 text-black text-sm font-medium rounded-lg transition-all flex items-center gap-1">
+                                                <i class="fas fa-chart-area"></i> Reconstruct
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                            <div x-show="completedTrials.length === 0" class="text-center py-8">
+                                <p class="text-gray-500 text-sm">No completed trials</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Reconstruction -->
+            <div x-show="currentTab === 'reconstruction'" x-cloak x-init="$watch('currentTab', val => val === 'reconstruction' && loadExistingResults())">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <!-- Controls -->
+                    <div class="lg:col-span-1 space-y-6">
+                        <!-- Run Reconstruction -->
+                        <div class="glass rounded-2xl p-6">
+                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-play-circle text-orange-400"></i>
+                                Run Reconstruction
+                            </h2>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-sm text-gray-400 block mb-2">Select Trial</label>
+                                    <select x-model="reconTrial" @change="loadExistingResults()" class="w-full bg-black border border-orange-500/30 rounded-lg px-3 py-2 text-white">
+                                        <template x-for="trial in completedTrials" :key="trial.id">
+                                            <option :value="trial.id" x-text="'Trial ' + trial.id"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <button @click="startReconstruction()" :disabled="reconRunning"
+                                    class="w-full py-3 bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-500 hover:to-yellow-500 text-black font-bold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                                    <i class="fas fa-play" x-show="!reconRunning"></i>
+                                    <i class="fas fa-spinner fa-spin" x-show="reconRunning"></i>
+                                    <span x-text="reconRunning ? 'Running...' : (reconResults.length > 0 ? 'Re-run Reconstruction' : 'Reconstruct Trial ' + reconTrial)"></span>
+                                </button>
+                                <p x-show="reconResults.length > 0 && !reconRunning" class="text-xs text-green-400 mt-2 text-center">
+                                    <i class="fas fa-check-circle mr-1"></i>Results already exist - displayed below
+                                </p>
+                                <button @click="reconstructAll()" :disabled="reconRunning || completedTrials.length === 0"
+                                    class="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white font-medium rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                                    <i class="fas fa-layer-group"></i> Reconstruct All Trials
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Filter Results -->
+                        <div class="glass rounded-2xl p-6">
+                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-filter text-yellow-400"></i>
+                                Filter Results
+                            </h2>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="text-sm text-gray-400 block mb-1">Field</label>
+                                    <select x-model="filterField" class="w-full bg-black border border-orange-500/30 rounded-lg px-3 py-2 text-white text-sm">
+                                        <option value="all">All Fields</option>
+                                        <option value="radial">Radial</option>
+                                        <option value="x_compress">X Compress</option>
+                                        <option value="y_compress">Y Compress</option>
+                                        <option value="x_compress_tilt">X Compress Tilt</option>
+                                        <option value="y_compress_tilt">Y Compress Tilt</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-sm text-gray-400 block mb-1">Method</label>
+                                    <select x-model="filterMethod" class="w-full bg-black border border-orange-500/30 rounded-lg px-3 py-2 text-white text-sm">
+                                        <option value="all">All Methods</option>
+                                        <option value="standard_gp">Standard GP</option>
+                                        <option value="mchutchon_nigp">McHutchon NIGP</option>
+                                        <option value="girard">Girard</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-sm text-gray-400 block mb-1">Kernel</label>
+                                    <select x-model="filterKernel" class="w-full bg-black border border-orange-500/30 rounded-lg px-3 py-2 text-white text-sm">
+                                        <option value="all">All Kernels</option>
+                                        <option value="rbf">RBF</option>
+                                        <option value="matern15">Matern 1.5</option>
+                                        <option value="matern25">Matern 2.5</option>
+                                        <option value="exponential">Exponential</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Comparison Heatmap Controls -->
+                        <div class="glass rounded-2xl p-6">
+                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-th text-purple-400"></i>
+                                Comparison Heatmap
+                            </h2>
+                            <div class="space-y-3">
+                                <button @click="generateComparisonHeatmap()" :disabled="reconResults.length === 0 || reconRunning"
+                                    class="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                                    <i class="fas fa-magic" x-show="!reconRunning"></i>
+                                    <i class="fas fa-spinner fa-spin" x-show="reconRunning"></i>
+                                    <span x-text="reconRunning ? 'Generating...' : 'Generate Heatmap'"></span>
+                                </button>
+                                <button @click="showComparisonHeatmap()" :disabled="!hasComparisonHeatmap"
+                                    class="w-full py-2 bg-green-600 hover:bg-green-500 text-white font-medium rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                                    <i class="fas fa-eye"></i> View Heatmap
+                                </button>
+                                <p x-show="!hasComparisonHeatmap && reconResults.length > 0" class="text-xs text-gray-500 mt-2 text-center">
+                                    Click "Generate Heatmap" to create comparison visualization
+                                </p>
+                                <p x-show="reconResults.length === 0" class="text-xs text-gray-500 mt-2 text-center">
+                                    Run reconstruction first to generate heatmap
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Trial Status -->
+                        <div class="glass rounded-2xl p-6">
+                            <h2 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                                <i class="fas fa-info-circle text-blue-400"></i>
+                                Trial Status
+                            </h2>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-400">Metrics:</span>
+                                    <span :class="reconResults.length > 0 ? 'text-green-400' : 'text-gray-500'" x-text="reconResults.length > 0 ? reconResults.length + ' loaded' : 'None'"></span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-400">Images:</span>
+                                    <span :class="reconImages.length > 0 ? 'text-green-400' : 'text-gray-500'" x-text="reconImages.length > 0 ? reconImages.length + ' loaded' : 'None'"></span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-400">Comparison:</span>
+                                    <span :class="hasComparisonHeatmap ? 'text-green-400' : 'text-gray-500'" x-text="hasComparisonHeatmap ? 'Available' : 'Not available'"></span>
+                                </div>
+                            </div>
+                            <div class="mt-4 pt-4 border-t border-gray-700">
+                                <button @click="deleteTrialData()"
+                                    class="w-full py-2 bg-gray-800 hover:bg-red-600 text-gray-400 hover:text-white font-medium rounded-lg transition-all flex items-center justify-center gap-2">
+                                    <i class="fas fa-trash"></i> Delete Trial Data
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Results -->
+                    <div class="lg:col-span-2 space-y-6">
+                        <!-- Results Table -->
+                        <div class="glass rounded-2xl p-6">
+                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-table text-yellow-400"></i>
+                                RMSE / NRMSE Metrics
+                                <span class="ml-auto text-sm font-normal text-gray-400" x-text="filteredResults.length + ' of ' + reconResults.length + ' results'"></span>
+                            </h2>
+                            <div x-show="filteredResults.length > 0" class="space-y-4">
+                                <!-- Summary Stats -->
+                                <div class="grid grid-cols-3 gap-4 mb-4">
+                                    <div class="bg-black/50 rounded-lg p-3 text-center">
+                                        <div class="text-xs text-gray-400">Best RMSE</div>
+                                        <div class="text-lg font-bold text-green-400" x-text="filteredResults.length ? Math.min(...filteredResults.map(r => r.rmse)).toFixed(4) : '-'"></div>
+                                    </div>
+                                    <div class="bg-black/50 rounded-lg p-3 text-center">
+                                        <div class="text-xs text-gray-400">Best NRMSE</div>
+                                        <div class="text-lg font-bold text-green-400" x-text="filteredResults.length ? Math.min(...filteredResults.map(r => r.nrmse)).toFixed(4) : '-'"></div>
+                                    </div>
+                                    <div class="bg-black/50 rounded-lg p-3 text-center">
+                                        <div class="text-xs text-gray-400">Methods</div>
+                                        <div class="text-lg font-bold text-orange-400" x-text="[...new Set(filteredResults.map(r => r.method))].length"></div>
+                                    </div>
+                                </div>
+                                <div class="overflow-x-auto max-h-96 overflow-y-auto">
+                                    <table class="w-full text-sm">
+                                        <thead class="sticky top-0 bg-gray-900">
+                                            <tr class="text-left text-gray-400 border-b border-gray-700">
+                                                <th class="pb-2 pr-4">Field</th>
+                                                <th class="pb-2 pr-4">Method</th>
+                                                <th class="pb-2 pr-4">Kernel</th>
+                                                <th class="pb-2 pr-4">RMSE</th>
+                                                <th class="pb-2">NRMSE</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <template x-for="result in filteredResults" :key="result.field + result.method + result.kernel">
+                                                <tr class="border-b border-gray-800 hover:bg-gray-800/50">
+                                                    <td class="py-2 pr-4 text-white" x-text="result.field"></td>
+                                                    <td class="py-2 pr-4">
+                                                        <span class="px-2 py-0.5 rounded text-xs font-medium"
+                                                            :class="{
+                                                                'bg-blue-500/20 text-blue-400': result.method === 'standard_gp',
+                                                                'bg-orange-500/20 text-orange-400': result.method === 'mchutchon_nigp',
+                                                                'bg-purple-500/20 text-purple-400': result.method === 'girard'
+                                                            }"
+                                                            x-text="result.method.replace('_', ' ')"></span>
+                                                    </td>
+                                                    <td class="py-2 pr-4 text-gray-400" x-text="result.kernel"></td>
+                                                    <td class="py-2 pr-4 font-mono"
+                                                        :class="result.rmse === Math.min(...filteredResults.filter(r => r.field === result.field).map(r => r.rmse)) ? 'text-green-400 font-bold' : 'text-yellow-400'"
+                                                        x-text="result.rmse.toFixed(4)"></td>
+                                                    <td class="py-2 font-mono"
+                                                        :class="result.nrmse === Math.min(...filteredResults.filter(r => r.field === result.field).map(r => r.nrmse)) ? 'text-green-400 font-bold' : 'text-yellow-400'"
+                                                        x-text="result.nrmse.toFixed(4)"></td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div x-show="reconResults.length === 0 && !reconRunning" class="text-center py-12">
+                                <i class="fas fa-chart-area text-4xl text-gray-700 mb-3"></i>
+                                <p class="text-gray-500">No results yet. Run a reconstruction or load existing results.</p>
+                            </div>
+                            <div x-show="reconRunning" class="text-center py-12">
+                                <i class="fas fa-spinner fa-spin text-4xl text-orange-400 mb-3"></i>
+                                <p class="text-gray-400">Running GP reconstruction on GPU...</p>
+                                <p class="text-xs text-gray-500 mt-2">This may take a few minutes</p>
+                            </div>
+                        </div>
+
+                        <!-- Reconstruction Error -->
+                        <div class="glass rounded-2xl p-6 border-2 border-red-500/50" x-show="reconError && !reconRunning">
+                            <h2 class="text-lg font-semibold text-red-400 mb-4 flex items-center gap-2">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                Reconstruction Failed
+                            </h2>
+                            <div class="bg-black/50 rounded-lg p-4 mb-4">
+                                <p class="text-red-300 text-sm font-mono whitespace-pre-wrap" x-text="reconError"></p>
+                            </div>
+                            <div class="text-sm text-gray-400">
+                                <p class="mb-2"><strong class="text-white">Possible causes:</strong></p>
+                                <ul class="list-disc list-inside space-y-1 ml-2">
+                                    <li>Trial simulation didn't complete (empty CSV files)</li>
+                                    <li>Trial data is corrupted or invalid</li>
+                                    <li>Insufficient GPU memory</li>
+                                    <li>Reconstruction script error</li>
+                                </ul>
+                                <p class="mt-3 text-orange-400">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    Check the trial simulation logs or try running the trial again.
+                                </p>
+                            </div>
+                            <div class="mt-4 pt-4 border-t border-red-500/30">
+                                <p class="text-sm text-gray-400 mb-3">
+                                    <strong class="text-white">Remove this trial?</strong> If this trial is corrupted or you don't need it, you can delete all its data.
+                                </p>
+                                <button @click="deleteTrialData()"
+                                    class="w-full py-2 bg-red-600 hover:bg-red-500 text-white font-medium rounded-lg transition-all flex items-center justify-center gap-2">
+                                    <i class="fas fa-trash"></i> Delete Trial <span x-text="reconTrial"></span> Data
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Comparison Heatmap -->
+                        <div class="glass rounded-2xl p-6" x-show="hasComparisonHeatmap">
+                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-th text-green-400"></i>
+                                Comparison Heatmap
+                            </h2>
+                            <template x-for="img in reconImages.filter(i => i.name.includes('comparison') || i.name.includes('heatmap') || i.path.includes('comparison'))" :key="img.path">
+                                <div class="cursor-pointer" @click="openImageModal(img.url)">
+                                    <img :src="img.url" :alt="img.name" class="w-full rounded-lg hover:opacity-90 transition-opacity">
+                                    <p class="text-xs text-gray-400 mt-2 text-center">Click to enlarge</p>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- Filtered Reconstruction Images -->
+                        <div class="glass rounded-2xl p-6" x-show="filteredImages.length > 0">
+                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-images text-yellow-400"></i>
+                                Reconstruction Images
+                                <span class="ml-auto text-sm font-normal text-gray-400" x-text="filteredImages.length + ' images'"></span>
+                            </h2>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto">
+                                <template x-for="img in filteredImages" :key="img.path">
+                                    <div class="bg-black/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/50 transition-colors" @click="openImageModal(img.url)">
+                                        <img :src="img.url" :alt="img.name" class="w-full rounded aspect-square object-cover">
+                                        <p class="text-xs text-gray-400 mt-1 truncate" x-text="formatImageName(img.name)"></p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Image Modal -->
+            <div x-show="imageModalOpen" x-cloak
+                class="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+                @click="imageModalOpen = false">
+                <img :src="imageModalUrl" class="max-w-full max-h-full rounded-lg shadow-2xl">
+                <button class="absolute top-4 right-4 text-white text-2xl" @click="imageModalOpen = false">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Tab: Host PC -->
+            <div x-show="currentTab === 'host'" x-cloak x-init="$watch('currentTab', val => val === 'host' && checkHostVncStatus())">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Remote Desktop Control -->
+                    <div class="space-y-6">
+                        <div class="glass rounded-2xl p-6">
+                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-desktop text-orange-400"></i>
+                                Remote Desktop
+                            </h2>
+                            <div class="space-y-4">
+                                <!-- Status Cards -->
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div class="bg-black/50 rounded-lg p-3">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="w-2 h-2 rounded-full" :class="hostVncStatus.x11vnc ? 'bg-green-500' : 'bg-gray-600'"></span>
+                                            <span class="text-sm text-gray-400">x11vnc</span>
+                                        </div>
+                                        <div class="text-xs" :class="hostVncStatus.x11vnc ? 'text-green-400' : 'text-gray-500'"
+                                            x-text="hostVncStatus.x11vnc ? 'Port 5900' : 'Stopped'"></div>
+                                    </div>
+                                    <div class="bg-black/50 rounded-lg p-3">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="w-2 h-2 rounded-full" :class="hostVncStatus.novnc ? 'bg-green-500' : 'bg-gray-600'"></span>
+                                            <span class="text-sm text-gray-400">noVNC</span>
+                                        </div>
+                                        <div class="text-xs" :class="hostVncStatus.novnc ? 'text-green-400' : 'text-gray-500'"
+                                            x-text="hostVncStatus.novnc ? 'Port 6080' : 'Stopped'"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Control Buttons -->
+                                <div class="flex gap-3">
+                                    <template x-if="!hostVncRunning">
+                                        <button @click="startHostVNC()"
+                                            class="flex-1 py-3 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2">
+                                            <i class="fas fa-play"></i> Start Remote Desktop
+                                        </button>
+                                    </template>
+                                    <template x-if="hostVncRunning">
+                                        <button @click="stopHostVNC()"
+                                            class="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2">
+                                            <i class="fas fa-stop"></i> Stop
+                                        </button>
+                                    </template>
+                                    <button @click="checkHostVncStatus()"
+                                        class="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl transition-all">
+                                        <i class="fas fa-sync-alt"></i>
+                                    </button>
+                                </div>
+
+                                <!-- Connect Button -->
+                                <template x-if="hostVncRunning">
+                                    <a :href="getHostVncUrl()" target="_blank"
+                                        class="block w-full py-4 bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-500 hover:to-yellow-500 text-black font-bold rounded-xl transition-all text-center glow-orange">
+                                        <i class="fas fa-external-link-alt mr-2"></i>
+                                        Open Remote Desktop in Browser
+                                    </a>
+                                </template>
+
+                                <!-- Instructions -->
+                                <div class="p-4 bg-black/50 rounded-lg space-y-2 text-sm">
+                                    <div class="text-gray-400">
+                                        <i class="fas fa-info-circle text-orange-400 mr-2"></i>
+                                        <strong class="text-white">Dual Monitor Support:</strong> Both monitors are captured.
+                                    </div>
+                                    <div class="text-gray-400">
+                                        <i class="fas fa-globe text-orange-400 mr-2"></i>
+                                        <strong class="text-white">Web Access:</strong> noVNC provides browser-based access (port 6080)
+                                    </div>
+                                    <div class="text-gray-400">
+                                        <i class="fas fa-desktop text-orange-400 mr-2"></i>
+                                        <strong class="text-white">VNC Client:</strong> Connect to localhost:5900
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Setup Instructions -->
+                        <div class="glass rounded-2xl p-6">
+                            <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-cog text-yellow-400"></i>
+                                First Time Setup
+                            </h3>
+                            <div class="space-y-3 text-sm">
+                                <p class="text-gray-400">Run the setup script to install required packages:</p>
+                                <code class="block bg-black p-3 rounded-lg text-orange-400 text-xs">
+                                    cd ~/workspaces/aquatic-mapping/web<br>
+                                    ./scripts/setup-remote-desktop.sh
+                                </code>
+                                <p class="text-gray-500 text-xs">This installs x11vnc and noVNC for web-based remote access.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Info -->
+                    <div class="space-y-6">
+                        <div class="glass rounded-2xl p-6">
+                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                <i class="fas fa-server text-yellow-400"></i>
+                                System Information
+                            </h2>
+                            <div class="space-y-3">
+                                <div class="bg-black/50 rounded-lg p-4 space-y-3 text-sm">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-400">Status</span>
+                                        <span class="flex items-center gap-2">
+                                            <span class="w-2 h-2 rounded-full bg-green-500 pulse-dot"></span>
+                                            <span class="text-green-400">Online</span>
+                                        </span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">GPU</span>
+                                        <span class="text-orange-400" x-text="system.gpu ? system.gpu.name : 'N/A'"></span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">GPU Memory</span>
+                                        <span class="text-white" x-text="system.gpu ? Math.round(system.gpu.memory_total_mb/1024) + ' GB' : 'N/A'"></span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">System RAM</span>
+                                        <span class="text-white" x-text="system.memory_total_gb + ' GB'"></span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">CPU Usage</span>
+                                        <span class="text-orange-400" x-text="system.cpu_percent + '%'"></span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Memory Usage</span>
+                                        <span class="text-yellow-400" x-text="system.memory_used_gb + '/' + system.memory_total_gb + ' GB'"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- GPU Stats -->
+                        <template x-if="system.gpu">
+                            <div class="glass rounded-2xl p-6">
+                                <div class="flex items-center gap-2 mb-4">
+                                    <i class="fas fa-bolt text-orange-400 text-lg"></i>
+                                    <span class="text-lg font-semibold text-white">GPU Stats</span>
+                                </div>
+                                <div class="space-y-4">
+                                    <div>
+                                        <div class="flex justify-between text-sm mb-2">
+                                            <span class="text-gray-400">Utilization</span>
+                                            <span class="text-orange-400 font-bold" x-text="system.gpu.utilization + '%'"></span>
+                                        </div>
+                                        <div class="h-3 bg-gray-800 rounded-full overflow-hidden">
+                                            <div class="h-full bg-gradient-to-r from-orange-600 to-yellow-400 progress-bar" :style="'width: ' + system.gpu.utilization + '%'"></div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="flex justify-between text-sm mb-2">
+                                            <span class="text-gray-400">Memory</span>
+                                            <span class="text-yellow-400 font-bold" x-text="Math.round(system.gpu.memory_used_mb/1024*10)/10 + '/' + Math.round(system.gpu.memory_total_mb/1024*10)/10 + ' GB'"></span>
+                                        </div>
+                                        <div class="h-3 bg-gray-800 rounded-full overflow-hidden">
+                                            <div class="h-full bg-gradient-to-r from-yellow-600 to-orange-400 progress-bar" :style="'width: ' + (system.gpu.memory_used_mb / system.gpu.memory_total_mb * 100) + '%'"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Toast Notifications -->
+        <div class="fixed bottom-4 right-4 space-y-2 z-50" x-show="notifications.length > 0">
+            <template x-for="(notif, index) in notifications" :key="index">
+                <div class="glass rounded-lg px-4 py-3 flex items-center gap-3 border"
+                    :class="notif.type === 'success' ? 'border-green-500/50' : notif.type === 'error' ? 'border-red-500/50' : 'border-orange-500/50'">
+                    <i :class="notif.type === 'success' ? 'fas fa-check-circle text-green-400' : notif.type === 'error' ? 'fas fa-times-circle text-red-400' : 'fas fa-info-circle text-orange-400'"></i>
+                    <span class="text-white text-sm" x-text="notif.message"></span>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <script>
+        function dashboard() {
+            return {
+                connected: false,
+                loading: false,
+                currentTab: 'simulations',
+                batchStart: 1,
+                batchEnd: 10,
+                concurrent: 3,
+                containers: [],
+                completedTrials: [],
+                system: { cpu_percent: 0, memory_percent: 0, memory_used_gb: 0, memory_total_gb: 0, gpu: null },
+                notifications: [],
+                ws: null,
+                // Reconstruction
+                reconTrial: '1',
+                reconRunning: false,
+                reconResults: [],
+                reconImages: [],
+                reconError: null,
+                // Filters for results display
+                filterField: 'all',
+                filterMethod: 'all',
+                filterKernel: 'all',
+                // Image modal
+                imageModalOpen: false,
+                imageModalUrl: '',
+                // Host VNC
+                hostVncRunning: false,
+                hostVncStatus: { x11vnc: false, novnc: false },
+
+                // Computed: filtered results based on filter selections
+                get filteredResults() {
+                    return this.reconResults.filter(r => {
+                        if (this.filterField !== 'all' && r.field !== this.filterField) return false;
+                        if (this.filterMethod !== 'all' && r.method !== this.filterMethod) return false;
+                        if (this.filterKernel !== 'all' && r.kernel !== this.filterKernel) return false;
+                        return true;
+                    });
+                },
+
+                // Computed: check if comparison heatmap exists
+                get hasComparisonHeatmap() {
+                    const has = this.reconImages.some(i =>
+                        i.name.includes('comparison') ||
+                        i.name.includes('heatmap') ||
+                        i.path.includes('comparison')
+                    );
+                    return has;
+                },
+
+                // Computed: filtered images based on filter selections
+                get filteredImages() {
+                    return this.reconImages.filter(img => {
+                        // Skip comparison/heatmap images (shown separately)
+                        if (img.name.includes('comparison') || img.name.includes('heatmap') || img.path.includes('comparison')) {
+                            return false;
+                        }
+
+                        // Parse path to extract method, field, kernel
+                        // Path format: method/field/kernel/filename.png
+                        const parts = img.path.split('/');
+                        if (parts.length < 4) return false; // Need at least method/field/kernel/filename
+
+                        const method = parts[0]; // e.g., standard_gp, mchutchon_nigp, girard
+                        const field = parts[1];  // e.g., radial, x_compress, etc.
+                        const kernel = parts[2]; // e.g., rbf, matern15, etc.
+
+                        if (this.filterField !== 'all' && field !== this.filterField) return false;
+                        if (this.filterMethod !== 'all' && method !== this.filterMethod) return false;
+                        if (this.filterKernel !== 'all' && kernel !== this.filterKernel) return false;
+
+                        return true;
+                    });
+                },
+
+                // Format image name for display
+                formatImageName(name) {
+                    return name.replace(/_/g, ' ').replace('.png', '').replace('.jpg', '');
+                },
+
+                init() {
+                    this.connectWebSocket();
+                    this.refreshStatus();
+                    this.loadCompletedTrials().then(() => {
+                        // Auto-load reconstruction results if trials exist
+                        if (this.reconTrial) {
+                            this.loadExistingResults();
+                        }
+                    });
+                    this.checkHostVncStatus();
+                },
+
+                connectWebSocket() {
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    this.ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+                    this.ws.onopen = () => { this.connected = true; };
+                    this.ws.onclose = () => { this.connected = false; setTimeout(() => this.connectWebSocket(), 3000); };
+                    this.ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        if (data.containers) this.containers = data.containers;
+                        if (data.system) this.system = data.system;
+                    };
+                },
+
+                async refreshStatus() {
+                    try {
+                        const response = await fetch('/api/status');
+                        const data = await response.json();
+                        this.containers = data.containers;
+                        this.system = data.system;
+                    } catch (e) { console.error(e); }
+                },
+
+                async loadCompletedTrials() {
+                    try {
+                        const response = await fetch('/api/trials/completed', { credentials: 'include' });
+                        this.completedTrials = await response.json();
+                        if (this.completedTrials.length > 0) {
+                            this.reconTrial = this.completedTrials[0].id;
+                        }
+                        return this.completedTrials;
+                    } catch (e) {
+                        console.error(e);
+                        return [];
+                    }
+                },
+
+                async startBatch() {
+                    this.loading = true;
+                    try {
+                        const response = await fetch('/api/batch/start', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ start_trial: parseInt(this.batchStart), end_trial: parseInt(this.batchEnd), concurrent: parseInt(this.concurrent) })
+                        });
+                        const data = await response.json();
+                        this.notify('success', `Started ${data.started.length} trials`);
+                        this.refreshStatus();
+                    } catch (e) { this.notify('error', 'Failed to start batch'); }
+                    this.loading = false;
+                },
+
+                async startSingleTrial() {
+                    const trialId = prompt('Enter trial number:');
+                    if (trialId) {
+                        try {
+                            await fetch(`/api/trial/start/${trialId}`, { method: 'POST' });
+                            this.notify('success', `Trial ${trialId} started`);
+                            this.refreshStatus();
+                        } catch (e) { this.notify('error', 'Failed to start trial'); }
+                    }
+                },
+
+                async stopTrial(trialId) {
+                    try {
+                        await fetch(`/api/trial/stop/${trialId}`, { method: 'POST' });
+                        this.notify('success', `Trial ${trialId} stopped`);
+                        this.refreshStatus();
+                    } catch (e) { this.notify('error', 'Failed to stop trial'); }
+                },
+
+                async removeTrial(trialId) {
+                    try {
+                        await fetch(`/api/trial/${trialId}`, { method: 'DELETE' });
+                        this.notify('success', `Trial ${trialId} removed`);
+                        this.refreshStatus();
+                    } catch (e) { this.notify('error', 'Failed to remove trial'); }
+                },
+
+                getTrialVncUrl(trialId, vncPort) {
+                    const hostname = window.location.hostname;
+                    // If accessing locally, use direct port
+                    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
+                        return `http://${hostname}:${vncPort}/vnc.html`;
+                    }
+                    // If accessing remotely via domain, use trial subdomain
+                    return `https://trial${trialId}.${hostname}/vnc.html`;
+                },
+
+                getHostVncUrl() {
+                    const hostname = window.location.hostname;
+                    // If accessing locally, use direct port
+                    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
+                        return `http://${hostname}:6080/vnc.html`;
+                    }
+                    // If accessing remotely via domain, use vnc subdomain
+                    return `https://vnc.${hostname}/vnc.html`;
+                },
+
+                async stopAll() {
+                    if (confirm('Stop all running trials?')) {
+                        try {
+                            await fetch('/api/batch/stop', { method: 'POST' });
+                            this.notify('success', 'All trials stopped');
+                            this.refreshStatus();
+                        } catch (e) { this.notify('error', 'Failed to stop trials'); }
+                    }
+                },
+
+                async runReconstruction(trialId) {
+                    this.reconTrial = trialId;
+                    this.currentTab = 'reconstruction';
+                },
+
+                async startReconstruction() {
+                    this.reconRunning = true;
+                    this.reconResults = [];
+                    this.reconError = null;
+                    try {
+                        // Start reconstruction with all fields and all methods
+                        const response = await fetch(`/api/reconstruct/${this.reconTrial}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                field: 'all',
+                                method: 'all'
+                            })
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                            this.notify('info', `Reconstruction started for trial ${this.reconTrial}`);
+                            // Poll for completion
+                            this.pollReconstructionStatus();
+                        } else {
+                            this.notify('error', data.message || 'Failed to start reconstruction');
+                            this.reconRunning = false;
+                        }
+                    } catch (e) {
+                        this.notify('error', 'Reconstruction failed');
+                        this.reconRunning = false;
+                    }
+                },
+
+                async pollReconstructionStatus() {
+                    const poll = async () => {
+                        try {
+                            const response = await fetch(`/api/reconstruct/${this.reconTrial}/status`, { credentials: 'include' });
+                            const data = await response.json();
+                            if (data.running) {
+                                setTimeout(poll, 2000);
+                            } else {
+                                // Reconstruction finished - check if it succeeded or failed
+                                console.log('Reconstruction completed for trial', this.reconTrial, 'success:', data.success);
+                                if (data.success === false || data.return_code !== 0) {
+                                    // Reconstruction failed
+                                    this.reconError = data.error || 'Reconstruction failed. Trial may have no data or invalid data.';
+                                    this.notify('error', `Trial ${this.reconTrial} reconstruction failed`);
+                                    this.reconRunning = false;
+                                } else {
+                                    // Reconstruction succeeded - wait a moment for files to be written
+                                    this.reconError = null;
+                                    setTimeout(() => this.loadReconstructionResults(), 1000);
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Poll error:', e);
+                            this.reconRunning = false;
+                            this.reconError = 'Failed to check reconstruction status';
+                        }
+                    };
+                    poll();
+                },
+
+                async loadReconstructionResults() {
+                    try {
+                        const response = await fetch(`/api/reconstruct/${this.reconTrial}/results`, { credentials: 'include' });
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.reconResults = data.results || [];
+                        } else if (response.status === 404) {
+                            // Results dir may not exist yet or no results
+                            this.reconResults = [];
+                        } else {
+                            this.reconResults = [];
+                        }
+                        // Also load images
+                        await this.loadReconstructionImages();
+
+                        if (this.reconResults.length > 0) {
+                            this.notify('success', `Loaded ${this.reconResults.length} results for trial ${this.reconTrial}.`);
+                        } else if (this.reconImages.length > 0) {
+                            this.notify('info', `Images loaded but no metrics for trial ${this.reconTrial}.`);
+                        } else {
+                            this.notify('info', 'No results found. The reconstruction may have failed or is still processing.');
+                        }
+                        console.log('loadReconstructionResults complete - results:', this.reconResults.length, 'images:', this.reconImages.length);
+                    } catch (e) {
+                        console.error('loadReconstructionResults error:', e);
+                        this.notify('error', 'Failed to load results');
+                        this.reconResults = [];
+                        this.reconImages = [];
+                    }
+                    this.reconRunning = false;
+                },
+
+                async loadReconstructionImages() {
+                    try {
+                        const response = await fetch(`/api/reconstruct/${this.reconTrial}/images`, { credentials: 'include' });
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.reconImages = data.images || [];
+                            console.log('Loaded images for trial', this.reconTrial, ':', this.reconImages.length);
+                            // Debug: log comparison images
+                            const comparisonImgs = this.reconImages.filter(i => i.name.includes('comparison') || i.name.includes('heatmap'));
+                            if (comparisonImgs.length > 0) {
+                                console.log('Found comparison heatmaps:', comparisonImgs);
+                            }
+                        } else {
+                            console.log('No images found for trial', this.reconTrial, '(status:', response.status, ')');
+                            this.reconImages = [];
+                        }
+                    } catch (e) {
+                        console.error('Failed to load images', e);
+                        this.reconImages = [];
+                    }
+                },
+
+                async loadExistingResults() {
+                    if (!this.reconTrial) return;
+                    this.reconError = null;  // Clear any previous errors
+                    try {
+                        const response = await fetch(`/api/reconstruct/${this.reconTrial}/results`, { credentials: 'include' });
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.reconResults = data.results || [];
+                        } else if (response.status === 404) {
+                            // No results yet - check if reconstruction previously failed
+                            this.reconResults = [];
+                            // Check if there's a log file with errors
+                            const statusRes = await fetch(`/api/reconstruct/${this.reconTrial}/status`, { credentials: 'include' });
+                            if (statusRes.ok) {
+                                const statusData = await statusRes.json();
+                                if (statusData.success === false && statusData.error) {
+                                    this.reconError = statusData.error;
+                                }
+                            }
+                        } else {
+                            console.error('Failed to load results:', response.status);
+                            this.reconResults = [];
+                        }
+                        // Always try to load images (might exist even without metrics)
+                        await this.loadReconstructionImages();
+                        console.log('Loaded for trial', this.reconTrial, '- results:', this.reconResults.length, 'images:', this.reconImages.length);
+                    } catch (e) {
+                        console.error('Failed to load results:', e);
+                        this.reconResults = [];
+                        this.reconImages = [];
+                    }
+                },
+
+                async reconstructAll() {
+                    if (this.completedTrials.length === 0) return;
+                    this.notify('info', `Reconstructing ${this.completedTrials.length} trials sequentially...`);
+
+                    for (let i = 0; i < this.completedTrials.length; i++) {
+                        const trial = this.completedTrials[i];
+                        this.reconTrial = trial.id;
+                        this.notify('info', `[${i+1}/${this.completedTrials.length}] Reconstructing trial ${trial.id}...`);
+
+                        // Start reconstruction and wait for it to complete
+                        await this.startReconstructionAndWait();
+                    }
+                    this.notify('success', 'All trials reconstructed!');
+                },
+
+                async startReconstructionAndWait() {
+                    return new Promise(async (resolve) => {
+                        this.reconRunning = true;
+                        this.reconError = null;
+                        try {
+                            const response = await fetch(`/api/reconstruct/${this.reconTrial}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ field: 'all', method: 'all' })
+                            });
+                            const data = await response.json();
+                            if (data.success) {
+                                // Poll until done
+                                const poll = async () => {
+                                    const statusRes = await fetch(`/api/reconstruct/${this.reconTrial}/status`);
+                                    const status = await statusRes.json();
+                                    if (status.running) {
+                                        setTimeout(poll, 2000);
+                                    } else {
+                                        // Check if it failed
+                                        if (status.success === false || status.return_code !== 0) {
+                                            this.reconError = status.error || 'Reconstruction failed';
+                                        } else {
+                                            await this.loadReconstructionResults();
+                                        }
+                                        this.reconRunning = false;
+                                        resolve();
+                                    }
+                                };
+                                poll();
+                            } else {
+                                this.reconRunning = false;
+                                resolve();
+                            }
+                        } catch (e) {
+                            this.reconRunning = false;
+                            this.reconError = 'Failed to start reconstruction';
+                            resolve();
+                        }
+                    });
+                },
+
+                async generateComparisonHeatmap() {
+                    if (this.reconResults.length === 0) {
+                        this.notify('error', 'No reconstruction results to compare');
+                        return;
+                    }
+
+                    this.reconRunning = true;
+                    this.notify('info', `Generating comparison heatmap for trial ${this.reconTrial}...`);
+
+                    try {
+                        const response = await fetch(`/api/reconstruct/${this.reconTrial}/generate-heatmap`, {
+                            method: 'POST',
+                            credentials: 'include'
+                        });
+                        const data = await response.json();
+
+                        if (data.success) {
+                            this.notify('success', 'Comparison heatmap generated!');
+                            // Reload images to show the new heatmap
+                            await this.loadReconstructionImages();
+                        } else {
+                            this.notify('error', data.message || 'Failed to generate heatmap');
+                            console.error('Heatmap generation error:', data.error || data.output);
+                        }
+                    } catch (e) {
+                        this.notify('error', 'Failed to generate comparison heatmap');
+                        console.error('Heatmap generation error:', e);
+                    } finally {
+                        this.reconRunning = false;
+                    }
+                },
+
+                showComparisonHeatmap() {
+                    const heatmap = this.reconImages.find(i => i.name.includes('comparison') || i.name.includes('heatmap'));
+                    if (heatmap) {
+                        this.openImageModal(heatmap.url);
+                    }
+                },
+
+                openImageModal(url) {
+                    this.imageModalUrl = url;
+                    this.imageModalOpen = true;
+                },
+
+                async deleteTrialData() {
+                    if (!confirm(`Delete all data for trial ${this.reconTrial}? This will remove:\n- Trial simulation data\n- Reconstruction results\n- All images and logs\n\nThis cannot be undone.`)) {
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`/api/trial/${this.reconTrial}/data`, {
+                            method: 'DELETE',
+                            credentials: 'include'
+                        });
+                        const data = await response.json();
+
+                        if (data.success) {
+                            this.notify('success', `Trial ${this.reconTrial} deleted successfully`);
+                            // Clear current data
+                            this.reconResults = [];
+                            this.reconImages = [];
+                            this.reconError = null;
+                            // Reload completed trials list
+                            await this.loadCompletedTrials();
+                            // Switch to first available trial or clear
+                            if (this.completedTrials.length > 0) {
+                                this.reconTrial = this.completedTrials[0].id;
+                                await this.loadExistingResults();
+                            }
+                        } else {
+                            // Show detailed error message
+                            let errorMsg = data.message || 'Failed to delete trial';
+                            if (data.errors && data.errors.length > 0) {
+                                // Check if it's a permission error
+                                const permError = data.errors.find(e => e.includes('Permission denied') || e.includes('sudo'));
+                                if (permError) {
+                                    errorMsg = `Permission denied. Run this command in terminal:\n\ncd ~/workspaces/aquatic-mapping/web\n./scripts/cleanup-trials.sh ${this.reconTrial}`;
+                                    alert(errorMsg);
+                                } else {
+                                    errorMsg = data.errors.join('\n');
+                                }
+                            }
+                            this.notify('error', 'Delete failed - see terminal for command');
+
+                            // Reload trials list anyway (might have partially deleted)
+                            await this.loadCompletedTrials();
+                        }
+                    } catch (e) {
+                        this.notify('error', 'Failed to delete trial data');
+                        console.error('Delete trial error:', e);
+                    }
+                },
+
+                async startHostVNC() {
+                    try {
+                        const response = await fetch('/api/host/vnc/start', { method: 'POST' });
+                        const data = await response.json();
+                        if (data.success) {
+                            this.hostVncRunning = true;
+                            this.notify('success', 'VNC server started on port 5900');
+                        } else {
+                            this.notify('error', data.detail || 'Failed to start VNC');
+                        }
+                    } catch (e) { this.notify('error', 'Failed to start VNC'); }
+                },
+
+                async stopHostVNC() {
+                    try {
+                        const response = await fetch('/api/host/vnc/stop', { method: 'POST' });
+                        const data = await response.json();
+                        this.hostVncRunning = false;
+                        this.notify('success', 'VNC server stopped');
+                    } catch (e) { this.notify('error', 'Failed to stop VNC'); }
+                },
+
+                async checkHostVncStatus() {
+                    try {
+                        const response = await fetch('/api/host/vnc/status');
+                        const data = await response.json();
+                        this.hostVncRunning = data.running;
+                        this.hostVncStatus = {
+                            x11vnc: data.x11vnc_running || false,
+                            novnc: data.novnc_running || false
+                        };
+                    } catch (e) {
+                        this.hostVncRunning = false;
+                        this.hostVncStatus = { x11vnc: false, novnc: false };
+                    }
+                },
+
+                notify(type, message) {
+                    this.notifications.push({ type, message });
+                    setTimeout(() => this.notifications.shift(), 3000);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
