@@ -47,10 +47,4 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/
 )
 
-# Install data directory
-install(DIRECTORY
-  data
-  DESTINATION share/${PROJECT_NAME}/
-)
-
 ament_package()
