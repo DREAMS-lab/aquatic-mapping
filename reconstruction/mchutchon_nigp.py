@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""
-McHutchon & Rasmussen (2011) Noisy Input Gaussian Process
-
-Implementation of gradient-based input uncertainty handling.
-Treats positional uncertainty as heteroscedastic observation noise.
-
-Reference: McHutchon & Rasmussen, "Gaussian Process Training with Input Noise", NIPS 2011
-"""
 import torch
 import gpytorch
 import numpy as np

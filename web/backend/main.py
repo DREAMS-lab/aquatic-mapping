@@ -56,6 +56,7 @@ PASSWORD = os.environ.get("SIM_PASSWORD", "ozhugu")
 security = HTTPBasic()
 
 def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
+    """Simple HTTP Basic Auth - browser will show popup"""
     correct_username = secrets.compare_digest(credentials.username, USERNAME)
     correct_password = secrets.compare_digest(credentials.password, PASSWORD)
     if not (correct_username and correct_password):
@@ -65,6 +66,11 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
             headers={"WWW-Authenticate": "Basic"},
         )
     return credentials.username
+
+# Login request model
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 # Docker client (only available when running on host PC)
 if IS_PRODUCTION:
@@ -191,16 +197,39 @@ manager = ConnectionManager()
 # ============================================================================
 
 @app.get("/", response_class=HTMLResponse)
-async def landing_page(request: Request):
-    """Public landing page - no auth required"""
-    return templates.TemplateResponse("landing.html", {"request": request})
+async def landing_page():
+    """Public landing page (The Desikan Chronicle) - no auth required"""
+    index_path = BASE_DIR / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path, media_type="text/html")
+    return RedirectResponse(url="/login")
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Login page - no auth required"""
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.post("/api/login")
+async def api_login(login: LoginRequest):
+    """API login endpoint - validates credentials"""
+    correct_username = secrets.compare_digest(login.username, USERNAME)
+    correct_password = secrets.compare_digest(login.password, PASSWORD)
+    if not (correct_username and correct_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return {"success": True, "username": login.username}
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint - no auth required, used to check if backend is online"""
+    return {"status": "online", "timestamp": datetime.now().isoformat()}
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, username: str = Depends(verify_credentials)):
-    """Protected dashboard - requires auth"""
+async def dashboard(request: Request):
+    """Dashboard page - auth is handled by frontend via sessionStorage"""
+    # Frontend checks auth and redirects to login if not authenticated
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
-        "username": username
+        "username": "user"  # Placeholder, actual username comes from sessionStorage
     })
 
 @app.get("/api/status")

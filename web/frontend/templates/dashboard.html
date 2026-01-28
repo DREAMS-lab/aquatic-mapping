@@ -1,511 +1,1004 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-black">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Field Sampler - Simulation Control</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Terminal - Control Panel</title>
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #0a0e14;
+            --bg-light: #141920;
+            --bg-lighter: #1a1f29;
+            --border: #1f2430;
+            --text: #c5c8c6;
+            --text-dim: #6c7680;
+            --accent: #00ff9f;
+            --accent-dim: #00cc7f;
+            --red: #ff3333;
+            --yellow: #ffb454;
+            --blue: #59c2ff;
+            --purple: #c678dd;
+        }
+
         [x-cloak] { display: none !important; }
-        .glass {
-            background: rgba(20, 20, 20, 0.9);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(251, 146, 60, 0.2);
+
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            line-height: 1.5;
+            min-height: 100vh;
         }
-        .glass-dark {
-            background: rgba(10, 10, 10, 0.95);
-            border: 1px solid rgba(251, 146, 60, 0.1);
+
+        /* Terminal Header */
+        .header {
+            background: var(--bg-light);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
         }
-        .gradient-text {
-            background: linear-gradient(135deg, #f97316, #eab308);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 20px;
         }
-        .gradient-border {
-            border: 2px solid transparent;
-            background: linear-gradient(#0a0a0a, #0a0a0a) padding-box,
-                        linear-gradient(135deg, #f97316, #eab308) border-box;
+
+        .prompt {
+            color: var(--accent);
+            font-weight: 600;
         }
-        .pulse-dot {
-            animation: pulse 2s infinite;
+
+        .prompt-path {
+            color: var(--blue);
         }
+
+        .header-nav {
+            display: flex;
+            gap: 8px;
+        }
+
+        .tab-btn {
+            padding: 6px 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-dim);
+            background: transparent;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+            color: var(--accent);
+            background: var(--bg-lighter);
+        }
+
+        .tab-btn.active {
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 11px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+
+        .dot.offline { background: var(--red); }
+
         @keyframes pulse {
             0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+            50% { opacity: 0.4; }
         }
-        .progress-bar {
-            transition: width 0.5s ease-in-out;
+
+        .dot.pulse { animation: pulse 2s infinite; }
+
+        /* Main Layout */
+        .main {
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
         }
-        .glow-orange {
-            box-shadow: 0 0 20px rgba(249, 115, 22, 0.3);
+
+        /* System Stats Bar */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
         }
-        body {
-            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+
+        .stat-card {
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            padding: 12px 16px;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+
+        .stat-bar {
+            height: 2px;
+            background: var(--bg);
+            border-radius: 1px;
+            overflow: hidden;
+        }
+
+        .stat-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.5s ease;
+        }
+
+        /* Terminal Panel */
+        .panel {
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            margin-bottom: 16px;
+        }
+
+        .panel-header {
+            padding: 10px 16px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .panel-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .panel-title i {
+            color: var(--accent);
+            font-size: 11px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            font-size: 10px;
+            background: var(--bg);
+            color: var(--accent);
+            border: 1px solid var(--accent);
+        }
+
+        .panel-body {
+            padding: 16px;
+        }
+
+        /* Grid Layouts */
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 280px 1fr 1fr;
+            gap: 16px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: var(--bg);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-dim);
+            border-color: var(--accent-dim);
+        }
+
+        .btn-danger {
+            border-color: var(--red);
+            color: var(--red);
+        }
+
+        .btn-danger:hover {
+            background: var(--red);
+            color: var(--bg);
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 10px;
+        }
+
+        .btn-block {
+            width: 100%;
+        }
+
+        .btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .form-input, .form-select {
+            width: 100%;
+            padding: 8px 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .form-range {
+            width: 100%;
+            -webkit-appearance: none;
+            height: 2px;
+            background: var(--bg);
+            border-radius: 1px;
+            margin-top: 8px;
+        }
+
+        .form-range::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: var(--accent);
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        /* Trial Items */
+        .trial-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            margin-bottom: 8px;
+            transition: all 0.2s;
+        }
+
+        .trial-item:hover {
+            border-color: var(--accent);
+        }
+
+        .trial-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .trial-icon {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-lighter);
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .trial-icon.running {
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        .trial-name {
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .trial-status {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+
+        .trial-status.running { color: var(--accent); }
+
+        .trial-actions {
+            display: flex;
+            gap: 4px;
+        }
+
+        /* Table */
+        .table-wrap {
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+
+        th {
+            text-align: left;
+            padding: 8px 10px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+            position: sticky;
+            top: 0;
+        }
+
+        td {
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tr:hover td {
+            background: var(--bg);
+        }
+
+        .badge-method {
+            padding: 2px 6px;
+            font-size: 9px;
+            border: 1px solid;
+        }
+
+        .badge-blue { border-color: var(--blue); color: var(--blue); }
+        .badge-purple { border-color: var(--purple); color: var(--purple); }
+        .badge-yellow { border-color: var(--yellow); color: var(--yellow); }
+
+        .text-best {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        /* Filters */
+        .filters-inline {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+            padding: 12px 16px;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .filter-group {
+            flex: 1;
+        }
+
+        .filter-group label {
+            display: block;
+            font-size: 9px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+        }
+
+        .filter-group select {
+            width: 100%;
+            padding: 6px 8px;
+            font-size: 11px;
+        }
+
+        /* Summary Boxes */
+        .summary-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .summary-box {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 10px;
+            text-align: center;
+        }
+
+        .summary-label {
+            font-size: 9px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .summary-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        /* Image Grid */
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .image-card {
+            aspect-ratio: 1;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .image-card:hover {
+            border-color: var(--accent);
+        }
+
+        .image-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 14, 20, 0.95);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+        }
+
+        .modal-overlay img {
+            max-width: 100%;
+            max-height: 100%;
+            border: 1px solid var(--border);
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: var(--text);
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        /* Toast */
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 10001;
+        }
+
+        .toast {
+            background: var(--bg-light);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px 16px;
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 11px;
+        }
+
+        .toast.error { border-color: var(--red); }
+        .toast.success { border-color: var(--accent); }
+
+        .toast i {
+            color: var(--accent);
+        }
+
+        .toast.error i { color: var(--red); }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-dim);
+        }
+
+        .empty-state i {
+            font-size: 32px;
+            margin-bottom: 12px;
+            opacity: 0.3;
+        }
+
+        /* VNC Status Grid */
+        .vnc-status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .vnc-status-item {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 10px;
+            font-size: 11px;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 11px;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            color: var(--text-dim);
+        }
+
+        /* Responsive */
+        @media (max-width: 1100px) {
+            .grid-3 {
+                grid-template-columns: 260px 1fr;
+            }
+
+            .grid-3 > *:nth-child(3) {
+                grid-column: 1 / -1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .grid-3, .grid-2 {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-bar {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .header-nav {
+                flex-wrap: wrap;
+            }
+
+            .filters-inline {
+                flex-wrap: wrap;
+            }
         }
     </style>
 </head>
-<body class="h-full text-gray-100" x-data="dashboard()" x-init="init()">
-    <div class="min-h-full">
-        <!-- Header -->
-        <header class="glass-dark sticky top-0 z-50 border-b border-orange-500/20">
-            <div class="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-4">
-                        <a href="/" class="text-gray-500 hover:text-orange-400 transition-colors" title="Back to Home">
-                            <i class="fas fa-arrow-left text-xl"></i>
-                        </a>
-                        <div class="flex items-center gap-3">
-                            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-yellow-500 flex items-center justify-center glow-orange">
-                                <i class="fas fa-flask text-black text-xl"></i>
+<body x-data="dashboard()" x-init="init()">
+    <!-- Terminal Header -->
+    <header class="header">
+        <div class="header-left">
+            <div>
+                <span class="prompt" x-text="(sessionStorage.getItem('username') || 'user') + '@control'">user@control</span>
+                <span class="prompt-path">~/aquatic-mapping</span>
+                <span style="color: var(--text);">$</span>
+            </div>
+            <nav class="header-nav">
+                <button @click="currentTab = 'simulations'" :class="currentTab === 'simulations' ? 'active' : ''" class="tab-btn">
+                    simulations
+                </button>
+                <button @click="currentTab = 'reconstruction'" :class="currentTab === 'reconstruction' ? 'active' : ''" class="tab-btn">
+                    reconstruction
+                </button>
+                <button @click="currentTab = 'host'" :class="currentTab === 'host' ? 'active' : ''" class="tab-btn">
+                    host
+                </button>
+            </nav>
+        </div>
+
+        <div class="header-right">
+            <div class="status-indicator">
+                <span class="dot" :class="connected ? 'pulse' : 'offline'"></span>
+                <span x-text="connected ? 'online' : 'offline'"></span>
+            </div>
+            <button @click="logout()" class="btn btn-sm" style="margin-left: 10px;">
+                <i class="fas fa-sign-out-alt"></i> logout
+            </button>
+        </div>
+    </header>
+
+    <main class="main">
+        <!-- System Stats -->
+        <div class="stats-bar">
+            <div class="stat-card">
+                <div class="stat-label">cpu</div>
+                <div class="stat-value" x-text="system.cpu_percent + '%'">0%</div>
+                <div class="stat-bar">
+                    <div class="stat-fill" :style="'width: ' + system.cpu_percent + '%'"></div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">memory</div>
+                <div class="stat-value" x-text="system.memory_used_gb + '/' + system.memory_total_gb + ' GB'">0/0 GB</div>
+                <div class="stat-bar">
+                    <div class="stat-fill" :style="'width: ' + system.memory_percent + '%'"></div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">gpu</div>
+                <template x-if="system.gpu">
+                    <div>
+                        <div class="stat-value" x-text="system.gpu.utilization + '%'">0%</div>
+                        <div class="stat-bar">
+                            <div class="stat-fill" :style="'width: ' + system.gpu.utilization + '%'"></div>
+                        </div>
+                    </div>
+                </template>
+                <template x-if="!system.gpu"><div class="stat-value" style="color: var(--text-dim)">N/A</div></template>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">gpu mem</div>
+                <template x-if="system.gpu">
+                    <div>
+                        <div class="stat-value" x-text="Math.round(system.gpu.memory_used_mb/1024*10)/10 + '/' + Math.round(system.gpu.memory_total_mb/1024*10)/10 + ' GB'">0/0 GB</div>
+                        <div class="stat-bar">
+                            <div class="stat-fill" :style="'width: ' + (system.gpu.memory_used_mb / system.gpu.memory_total_mb * 100) + '%'"></div>
+                        </div>
+                    </div>
+                </template>
+                <template x-if="!system.gpu"><div class="stat-value" style="color: var(--text-dim)">N/A</div></template>
+            </div>
+        </div>
+
+        <!-- Tab: Simulations -->
+        <div x-show="currentTab === 'simulations'" x-cloak>
+            <div class="grid-3">
+                <!-- Controls -->
+                <div>
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fas fa-rocket"></i> launch batch</span>
+                        </div>
+                        <div class="panel-body">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">start</label>
+                                    <input type="number" x-model="batchStart" min="1" class="form-input">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label">end</label>
+                                    <input type="number" x-model="batchEnd" min="1" class="form-input">
+                                </div>
                             </div>
+                            <div class="form-group">
+                                <label class="form-label">concurrent: <strong style="color: var(--accent)" x-text="concurrent"></strong></label>
+                                <input type="range" x-model="concurrent" min="1" max="5" class="form-range">
+                            </div>
+                            <button @click="startBatch()" :disabled="loading" class="btn btn-primary btn-block">
+                                <i class="fas fa-play"></i>
+                                <span x-text="loading ? 'starting...' : 'launch'"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="panel" style="margin-top: 12px;">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fas fa-tools"></i> actions</span>
+                        </div>
+                        <div class="panel-body" style="display: flex; flex-direction: column; gap: 8px;">
+                            <button @click="startSingleTrial()" class="btn btn-block">
+                                <i class="fas fa-plus"></i> single trial
+                            </button>
+                            <button @click="stopAll()" class="btn btn-danger btn-block">
+                                <i class="fas fa-stop"></i> stop all
+                            </button>
+                            <button @click="refreshStatus()" class="btn btn-block">
+                                <i class="fas fa-sync-alt"></i> refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active Trials -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title"><i class="fas fa-server"></i> active trials</span>
+                        <span class="badge" x-text="containers.filter(c => c.status === 'running').length + ' running'"></span>
+                    </div>
+                    <div class="panel-body" style="max-height: 450px; overflow-y: auto;">
+                        <template x-if="containers.length > 0">
                             <div>
-                                <h1 class="text-2xl font-bold gradient-text">Field Sampler</h1>
-                                <p class="text-xs text-gray-500">Autonomous Spatial Field Reconstruction</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-6">
-                        <!-- Navigation -->
-                        <nav class="flex items-center gap-4">
-                            <button @click="currentTab = 'simulations'"
-                                :class="currentTab === 'simulations' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-400 hover:text-orange-300'"
-                                class="pb-1 text-sm font-medium transition-all">
-                                <i class="fas fa-server mr-1"></i> Simulations
-                            </button>
-                            <button @click="currentTab = 'reconstruction'"
-                                :class="currentTab === 'reconstruction' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-400 hover:text-orange-300'"
-                                class="pb-1 text-sm font-medium transition-all">
-                                <i class="fas fa-chart-area mr-1"></i> Reconstruction
-                            </button>
-                            <button @click="currentTab = 'host'"
-                                :class="currentTab === 'host' ? 'text-orange-400 border-b-2 border-orange-400' : 'text-gray-400 hover:text-orange-300'"
-                                class="pb-1 text-sm font-medium transition-all">
-                                <i class="fas fa-desktop mr-1"></i> Host PC
-                            </button>
-                        </nav>
-                        <div class="flex items-center gap-2 text-sm text-gray-400">
-                            <span class="w-2 h-2 rounded-full pulse-dot" :class="connected ? 'bg-green-500' : 'bg-red-500'"></span>
-                            <span x-text="connected ? 'Live' : 'Offline'"></span>
-                        </div>
-                        <div class="text-sm text-orange-400">
-                            <i class="fas fa-user mr-1"></i> {{ username }}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </header>
-
-        <main class="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-            <!-- System Stats Bar -->
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                <div class="glass rounded-2xl p-4">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-gray-400 text-sm">CPU</span>
-                        <i class="fas fa-microchip text-orange-400"></i>
-                    </div>
-                    <div class="text-2xl font-bold text-white" x-text="system.cpu_percent + '%'">0%</div>
-                    <div class="mt-2 h-2 bg-gray-800 rounded-full overflow-hidden">
-                        <div class="h-full bg-gradient-to-r from-orange-600 to-orange-400 progress-bar" :style="'width: ' + system.cpu_percent + '%'"></div>
-                    </div>
-                </div>
-                <div class="glass rounded-2xl p-4">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-gray-400 text-sm">Memory</span>
-                        <i class="fas fa-memory text-yellow-400"></i>
-                    </div>
-                    <div class="text-2xl font-bold text-white" x-text="system.memory_used_gb + '/' + system.memory_total_gb + ' GB'">0/0 GB</div>
-                    <div class="mt-2 h-2 bg-gray-800 rounded-full overflow-hidden">
-                        <div class="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 progress-bar" :style="'width: ' + system.memory_percent + '%'"></div>
-                    </div>
-                </div>
-                <div class="glass rounded-2xl p-4">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-gray-400 text-sm">GPU</span>
-                        <i class="fas fa-bolt text-orange-400"></i>
-                    </div>
-                    <template x-if="system.gpu">
-                        <div>
-                            <div class="text-2xl font-bold text-white" x-text="system.gpu.utilization + '%'">0%</div>
-                            <div class="mt-2 h-2 bg-gray-800 rounded-full overflow-hidden">
-                                <div class="h-full bg-gradient-to-r from-orange-600 to-yellow-400 progress-bar" :style="'width: ' + system.gpu.utilization + '%'"></div>
-                            </div>
-                        </div>
-                    </template>
-                    <template x-if="!system.gpu"><div class="text-gray-500">No GPU</div></template>
-                </div>
-                <div class="glass rounded-2xl p-4">
-                    <div class="flex items-center justify-between mb-2">
-                        <span class="text-gray-400 text-sm">GPU Memory</span>
-                        <i class="fas fa-database text-yellow-400"></i>
-                    </div>
-                    <template x-if="system.gpu">
-                        <div>
-                            <div class="text-2xl font-bold text-white" x-text="Math.round(system.gpu.memory_used_mb/1024*10)/10 + '/' + Math.round(system.gpu.memory_total_mb/1024*10)/10 + ' GB'">0/0 GB</div>
-                            <div class="mt-2 h-2 bg-gray-800 rounded-full overflow-hidden">
-                                <div class="h-full bg-gradient-to-r from-yellow-600 to-orange-400 progress-bar" :style="'width: ' + (system.gpu.memory_used_mb / system.gpu.memory_total_mb * 100) + '%'"></div>
-                            </div>
-                        </div>
-                    </template>
-                    <template x-if="!system.gpu"><div class="text-gray-500">-</div></template>
-                </div>
-            </div>
-
-            <!-- Tab: Simulations -->
-            <div x-show="currentTab === 'simulations'" x-cloak>
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <!-- Left: Controls -->
-                    <div class="lg:col-span-1 space-y-6">
-                        <!-- New Batch -->
-                        <div class="glass rounded-2xl p-6">
-                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-play-circle text-orange-400"></i>
-                                Start Trial Batch
-                            </h2>
-                            <div class="space-y-4">
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="text-sm text-gray-400 block mb-1">Start</label>
-                                        <input type="number" x-model="batchStart" min="1"
-                                            class="w-full bg-black border border-orange-500/30 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none">
-                                    </div>
-                                    <div>
-                                        <label class="text-sm text-gray-400 block mb-1">End</label>
-                                        <input type="number" x-model="batchEnd" min="1"
-                                            class="w-full bg-black border border-orange-500/30 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none">
-                                    </div>
-                                </div>
-                                <div>
-                                    <label class="text-sm text-gray-400 block mb-1">Concurrent: <span class="text-orange-400" x-text="concurrent"></span></label>
-                                    <input type="range" x-model="concurrent" min="1" max="5"
-                                        class="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-orange-500">
-                                </div>
-                                <button @click="startBatch()" :disabled="loading"
-                                    class="w-full py-3 bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-500 hover:to-yellow-500 text-black font-bold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 glow-orange">
-                                    <i class="fas fa-rocket"></i>
-                                    <span x-text="loading ? 'Starting...' : 'Launch Batch'"></span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Quick Actions -->
-                        <div class="glass rounded-2xl p-6">
-                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-bolt text-yellow-400"></i>
-                                Quick Actions
-                            </h2>
-                            <div class="space-y-3">
-                                <button @click="startSingleTrial()"
-                                    class="w-full py-2 bg-orange-600/20 border border-orange-500/50 hover:bg-orange-600/30 text-orange-400 rounded-lg transition-all flex items-center justify-center gap-2">
-                                    <i class="fas fa-plus"></i> Single Trial
-                                </button>
-                                <button @click="stopAll()"
-                                    class="w-full py-2 bg-red-600/20 border border-red-500/50 hover:bg-red-600/30 text-red-400 rounded-lg transition-all flex items-center justify-center gap-2">
-                                    <i class="fas fa-stop"></i> Stop All
-                                </button>
-                                <button @click="refreshStatus()"
-                                    class="w-full py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg transition-all flex items-center justify-center gap-2">
-                                    <i class="fas fa-sync-alt"></i> Refresh
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Right: Trials -->
-                    <div class="lg:col-span-2 space-y-6">
-                        <!-- Active Trials -->
-                        <div class="glass rounded-2xl p-6">
-                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-server text-orange-400"></i>
-                                Active Trials
-                                <span class="ml-auto text-sm font-normal text-gray-400" x-text="containers.filter(c => c.status === 'running').length + ' running'"></span>
-                            </h2>
-                            <div class="space-y-3" x-show="containers.length > 0">
                                 <template x-for="container in containers" :key="container.name">
-                                    <div class="bg-black/50 rounded-xl p-4 border border-orange-500/20">
-                                        <div class="flex items-center justify-between mb-3">
-                                            <div class="flex items-center gap-3">
-                                                <div class="w-10 h-10 rounded-lg flex items-center justify-center"
-                                                    :class="container.status === 'running' ? 'bg-orange-500/20' : 'bg-gray-700/50'">
-                                                    <i class="fas fa-cube" :class="container.status === 'running' ? 'text-orange-400' : 'text-gray-500'"></i>
-                                                </div>
-                                                <div>
-                                                    <div class="font-semibold text-white" x-text="'Trial ' + container.trial_id"></div>
-                                                    <div class="text-xs" :class="container.status === 'running' ? 'text-green-400' : 'text-gray-500'" x-text="container.status"></div>
-                                                </div>
-                                            </div>
-                                            <div class="flex items-center gap-2">
-                                                <template x-if="container.status === 'running' && container.vnc_port">
-                                                    <a :href="getTrialVncUrl(container.trial_id, container.vnc_port)" target="_blank"
-                                                        class="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 text-black text-sm font-medium rounded-lg transition-all flex items-center gap-1">
-                                                        <i class="fas fa-desktop"></i> VNC
-                                                    </a>
-                                                </template>
-                                                <template x-if="container.status === 'running'">
-                                                    <button @click="stopTrial(container.trial_id)"
-                                                        class="px-3 py-1.5 bg-red-600/80 hover:bg-red-500 text-white text-sm rounded-lg transition-all">
-                                                        <i class="fas fa-stop"></i>
-                                                    </button>
-                                                </template>
-                                                <template x-if="container.status !== 'running'">
-                                                    <button @click="removeTrial(container.trial_id)"
-                                                        class="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-all">
-                                                        <i class="fas fa-trash"></i>
-                                                    </button>
-                                                </template>
-                                            </div>
-                                        </div>
-                                        <template x-if="container.status === 'running' && container.stats">
-                                            <div class="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <div class="text-xs text-gray-500 mb-1">CPU <span class="text-orange-400" x-text="(container.stats.cpu_percent || 0) + '%'"></span></div>
-                                                    <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                                                        <div class="h-full bg-orange-500 progress-bar" :style="'width: ' + (container.stats.cpu_percent || 0) + '%'"></div>
-                                                    </div>
-                                                </div>
-                                                <div>
-                                                    <div class="text-xs text-gray-500 mb-1">MEM <span class="text-yellow-400" x-text="(container.stats.mem_usage_mb || 0) + ' MB'"></span></div>
-                                                    <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                                                        <div class="h-full bg-yellow-500 progress-bar" :style="'width: ' + (container.stats.mem_percent || 0) + '%'"></div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </template>
-                                    </div>
-                                </template>
-                            </div>
-                            <div x-show="containers.length === 0" class="text-center py-12">
-                                <i class="fas fa-inbox text-4xl text-gray-700 mb-3"></i>
-                                <p class="text-gray-500">No active containers</p>
-                            </div>
-                        </div>
-
-                        <!-- Completed Trials -->
-                        <div class="glass rounded-2xl p-6">
-                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-check-circle text-green-400"></i>
-                                Completed Trials
-                            </h2>
-                            <div class="space-y-2" x-show="completedTrials.length > 0">
-                                <template x-for="trial in completedTrials" :key="trial.id">
-                                    <div class="bg-black/50 rounded-lg p-3 flex items-center justify-between border border-green-500/20">
-                                        <div class="flex items-center gap-3">
-                                            <div class="w-8 h-8 rounded bg-green-500/20 flex items-center justify-center">
-                                                <i class="fas fa-check text-green-400 text-sm"></i>
+                                    <div class="trial-item">
+                                        <div class="trial-info">
+                                            <div class="trial-icon" :class="container.status === 'running' ? 'running' : ''">
+                                                <i class="fas fa-cube"></i>
                                             </div>
                                             <div>
-                                                <div class="text-white font-medium" x-text="'Trial ' + trial.id"></div>
-                                                <div class="text-xs text-gray-400" x-text="trial.field_count + ' fields'"></div>
+                                                <div class="trial-name" x-text="'trial_' + container.trial_id"></div>
+                                                <div class="trial-status" :class="container.status" x-text="container.status"></div>
                                             </div>
                                         </div>
-                                        <div class="flex items-center gap-2">
-                                            <a :href="'/api/download/' + trial.id"
-                                                class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm rounded-lg transition-all flex items-center gap-1">
-                                                <i class="fas fa-download"></i> ZIP
-                                            </a>
-                                            <button @click="runReconstruction(trial.id)"
-                                                class="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 text-black text-sm font-medium rounded-lg transition-all flex items-center gap-1">
-                                                <i class="fas fa-chart-area"></i> Reconstruct
-                                            </button>
+                                        <div class="trial-actions">
+                                            <template x-if="container.status === 'running' && container.vnc_port">
+                                                <a :href="getTrialVncUrl(container.trial_id, container.vnc_port)" target="_blank" class="btn btn-sm">vnc</a>
+                                            </template>
+                                            <template x-if="container.status === 'running'">
+                                                <button @click="stopTrial(container.trial_id)" class="btn btn-sm btn-danger"><i class="fas fa-stop"></i></button>
+                                            </template>
+                                            <template x-if="container.status !== 'running'">
+                                                <button @click="removeTrial(container.trial_id)" class="btn btn-sm"><i class="fas fa-trash"></i></button>
+                                            </template>
                                         </div>
                                     </div>
                                 </template>
                             </div>
-                            <div x-show="completedTrials.length === 0" class="text-center py-8">
-                                <p class="text-gray-500 text-sm">No completed trials</p>
+                        </template>
+                        <template x-if="containers.length === 0">
+                            <div class="empty-state">
+                                <i class="fas fa-inbox"></i>
+                                <p>no active containers</p>
                             </div>
-                        </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Completed Trials -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title"><i class="fas fa-check-circle"></i> completed</span>
+                    </div>
+                    <div class="panel-body" style="max-height: 450px; overflow-y: auto;">
+                        <template x-if="completedTrials.length > 0">
+                            <div>
+                                <template x-for="trial in completedTrials" :key="trial.id">
+                                    <div class="trial-item">
+                                        <div class="trial-info">
+                                            <div class="trial-icon running">
+                                                <i class="fas fa-check"></i>
+                                            </div>
+                                            <div>
+                                                <div class="trial-name" x-text="'trial_' + trial.id"></div>
+                                                <div class="trial-status" x-text="trial.field_count + ' fields'"></div>
+                                            </div>
+                                        </div>
+                                        <div class="trial-actions">
+                                            <a :href="'/api/download/' + trial.id" class="btn btn-sm"><i class="fas fa-download"></i></a>
+                                            <button @click="runReconstruction(trial.id)" class="btn btn-sm btn-primary">recon</button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                        <template x-if="completedTrials.length === 0">
+                            <div class="empty-state">
+                                <i class="fas fa-folder-open"></i>
+                                <p>no completed trials</p>
+                            </div>
+                        </template>
                     </div>
                 </div>
             </div>
+        </div>
 
-            <!-- Tab: Reconstruction -->
-            <div x-show="currentTab === 'reconstruction'" x-cloak x-init="$watch('currentTab', val => val === 'reconstruction' && loadExistingResults())">
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <!-- Controls -->
-                    <div class="lg:col-span-1 space-y-6">
-                        <!-- Run Reconstruction -->
-                        <div class="glass rounded-2xl p-6">
-                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-play-circle text-orange-400"></i>
-                                Run Reconstruction
-                            </h2>
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="text-sm text-gray-400 block mb-2">Select Trial</label>
-                                    <select x-model="reconTrial" @change="loadExistingResults()" class="w-full bg-black border border-orange-500/30 rounded-lg px-3 py-2 text-white">
-                                        <template x-for="trial in completedTrials" :key="trial.id">
-                                            <option :value="trial.id" x-text="'Trial ' + trial.id"></option>
-                                        </template>
-                                    </select>
-                                </div>
-                                <button @click="startReconstruction()" :disabled="reconRunning"
-                                    class="w-full py-3 bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-500 hover:to-yellow-500 text-black font-bold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                                    <i class="fas fa-play" x-show="!reconRunning"></i>
-                                    <i class="fas fa-spinner fa-spin" x-show="reconRunning"></i>
-                                    <span x-text="reconRunning ? 'Running...' : (reconResults.length > 0 ? 'Re-run Reconstruction' : 'Reconstruct Trial ' + reconTrial)"></span>
-                                </button>
-                                <p x-show="reconResults.length > 0 && !reconRunning" class="text-xs text-green-400 mt-2 text-center">
-                                    <i class="fas fa-check-circle mr-1"></i>Results already exist - displayed below
-                                </p>
-                                <button @click="reconstructAll()" :disabled="reconRunning || completedTrials.length === 0"
-                                    class="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white font-medium rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                                    <i class="fas fa-layer-group"></i> Reconstruct All Trials
-                                </button>
-                            </div>
+        <!-- Tab: Reconstruction -->
+        <div x-show="currentTab === 'reconstruction'" x-cloak x-init="$watch('currentTab', val => val === 'reconstruction' && loadExistingResults())">
+            <div class="grid-3">
+                <!-- Controls -->
+                <div>
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fas fa-play-circle"></i> run</span>
                         </div>
-
-                        <!-- Filter Results -->
-                        <div class="glass rounded-2xl p-6">
-                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-filter text-yellow-400"></i>
-                                Filter Results
-                            </h2>
-                            <div class="space-y-3">
-                                <div>
-                                    <label class="text-sm text-gray-400 block mb-1">Field</label>
-                                    <select x-model="filterField" class="w-full bg-black border border-orange-500/30 rounded-lg px-3 py-2 text-white text-sm">
-                                        <option value="all">All Fields</option>
-                                        <option value="radial">Radial</option>
-                                        <option value="x_compress">X Compress</option>
-                                        <option value="y_compress">Y Compress</option>
-                                        <option value="x_compress_tilt">X Compress Tilt</option>
-                                        <option value="y_compress_tilt">Y Compress Tilt</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="text-sm text-gray-400 block mb-1">Method</label>
-                                    <select x-model="filterMethod" class="w-full bg-black border border-orange-500/30 rounded-lg px-3 py-2 text-white text-sm">
-                                        <option value="all">All Methods</option>
-                                        <option value="standard_gp">Standard GP</option>
-                                        <option value="mchutchon_nigp">McHutchon NIGP</option>
-                                        <option value="girard">Girard</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="text-sm text-gray-400 block mb-1">Kernel</label>
-                                    <select x-model="filterKernel" class="w-full bg-black border border-orange-500/30 rounded-lg px-3 py-2 text-white text-sm">
-                                        <option value="all">All Kernels</option>
-                                        <option value="rbf">RBF</option>
-                                        <option value="matern15">Matern 1.5</option>
-                                        <option value="matern25">Matern 2.5</option>
-                                        <option value="exponential">Exponential</option>
-                                    </select>
-                                </div>
+                        <div class="panel-body">
+                            <div class="form-group">
+                                <label class="form-label">select trial</label>
+                                <select x-model="reconTrial" @change="loadExistingResults()" class="form-select">
+                                    <template x-for="trial in completedTrials" :key="trial.id">
+                                        <option :value="trial.id" x-text="'trial_' + trial.id"></option>
+                                    </template>
+                                </select>
                             </div>
-                        </div>
-
-                        <!-- Comparison Heatmap Controls -->
-                        <div class="glass rounded-2xl p-6">
-                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-th text-purple-400"></i>
-                                Comparison Heatmap
-                            </h2>
-                            <div class="space-y-3">
-                                <button @click="generateComparisonHeatmap()" :disabled="reconResults.length === 0 || reconRunning"
-                                    class="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                                    <i class="fas fa-magic" x-show="!reconRunning"></i>
-                                    <i class="fas fa-spinner fa-spin" x-show="reconRunning"></i>
-                                    <span x-text="reconRunning ? 'Generating...' : 'Generate Heatmap'"></span>
-                                </button>
-                                <button @click="showComparisonHeatmap()" :disabled="!hasComparisonHeatmap"
-                                    class="w-full py-2 bg-green-600 hover:bg-green-500 text-white font-medium rounded-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                                    <i class="fas fa-eye"></i> View Heatmap
-                                </button>
-                                <p x-show="!hasComparisonHeatmap && reconResults.length > 0" class="text-xs text-gray-500 mt-2 text-center">
-                                    Click "Generate Heatmap" to create comparison visualization
-                                </p>
-                                <p x-show="reconResults.length === 0" class="text-xs text-gray-500 mt-2 text-center">
-                                    Run reconstruction first to generate heatmap
-                                </p>
-                            </div>
-                        </div>
-
-                        <!-- Trial Status -->
-                        <div class="glass rounded-2xl p-6">
-                            <h2 class="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-                                <i class="fas fa-info-circle text-blue-400"></i>
-                                Trial Status
-                            </h2>
-                            <div class="space-y-2 text-sm">
-                                <div class="flex justify-between">
-                                    <span class="text-gray-400">Metrics:</span>
-                                    <span :class="reconResults.length > 0 ? 'text-green-400' : 'text-gray-500'" x-text="reconResults.length > 0 ? reconResults.length + ' loaded' : 'None'"></span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-400">Images:</span>
-                                    <span :class="reconImages.length > 0 ? 'text-green-400' : 'text-gray-500'" x-text="reconImages.length > 0 ? reconImages.length + ' loaded' : 'None'"></span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-400">Comparison:</span>
-                                    <span :class="hasComparisonHeatmap ? 'text-green-400' : 'text-gray-500'" x-text="hasComparisonHeatmap ? 'Available' : 'Not available'"></span>
-                                </div>
-                            </div>
-                            <div class="mt-4 pt-4 border-t border-gray-700">
-                                <button @click="deleteTrialData()"
-                                    class="w-full py-2 bg-gray-800 hover:bg-red-600 text-gray-400 hover:text-white font-medium rounded-lg transition-all flex items-center justify-center gap-2">
-                                    <i class="fas fa-trash"></i> Delete Trial Data
-                                </button>
-                            </div>
+                            <button @click="startReconstruction()" :disabled="reconRunning" class="btn btn-primary btn-block">
+                                <i class="fas fa-play" x-show="!reconRunning"></i>
+                                <i class="fas fa-spinner fa-spin" x-show="reconRunning"></i>
+                                <span x-text="reconRunning ? 'running...' : 'start'"></span>
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Results -->
-                    <div class="lg:col-span-2 space-y-6">
-                        <!-- Results Table -->
-                        <div class="glass rounded-2xl p-6">
-                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-table text-yellow-400"></i>
-                                RMSE / NRMSE Metrics
-                                <span class="ml-auto text-sm font-normal text-gray-400" x-text="filteredResults.length + ' of ' + reconResults.length + ' results'"></span>
-                            </h2>
-                            <div x-show="filteredResults.length > 0" class="space-y-4">
-                                <!-- Summary Stats -->
-                                <div class="grid grid-cols-3 gap-4 mb-4">
-                                    <div class="bg-black/50 rounded-lg p-3 text-center">
-                                        <div class="text-xs text-gray-400">Best RMSE</div>
-                                        <div class="text-lg font-bold text-green-400" x-text="filteredResults.length ? Math.min(...filteredResults.map(r => r.rmse)).toFixed(4) : '-'"></div>
+                    <div class="panel" style="margin-top: 12px;">
+                        <div class="panel-header">
+                            <span class="panel-title"><i class="fas fa-th"></i> heatmap</span>
+                        </div>
+                        <div class="panel-body" style="display: flex; flex-direction: column; gap: 8px;">
+                            <button @click="generateComparisonHeatmap()" :disabled="reconResults.length === 0" class="btn btn-block">
+                                <i class="fas fa-magic"></i> generate
+                            </button>
+                            <button @click="showComparisonHeatmap()" :disabled="!hasComparisonHeatmap" class="btn btn-primary btn-block">
+                                <i class="fas fa-eye"></i> view
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="panel" style="margin-top: 12px;">
+                        <div class="panel-body">
+                            <button @click="deleteTrialData()" class="btn btn-danger btn-block">
+                                <i class="fas fa-trash"></i> delete trial data
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div class="panel" style="grid-column: span 2;">
+                    <div class="panel-header">
+                        <span class="panel-title"><i class="fas fa-table"></i> results</span>
+                        <span class="badge" x-text="filteredResults.length + '/' + reconResults.length"></span>
+                    </div>
+
+                    <!-- Inline Filters -->
+                    <div class="filters-inline">
+                        <div class="filter-group">
+                            <label>field</label>
+                            <select x-model="filterField">
+                                <option value="all">all</option>
+                                <option value="radial">radial</option>
+                                <option value="x_compress">x_compress</option>
+                                <option value="y_compress">y_compress</option>
+                                <option value="x_compress_tilt">x_compress_tilt</option>
+                                <option value="y_compress_tilt">y_compress_tilt</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>method</label>
+                            <select x-model="filterMethod">
+                                <option value="all">all</option>
+                                <option value="standard_gp">standard_gp</option>
+                                <option value="mchutchon_nigp">mchutchon_nigp</option>
+                                <option value="girard">girard</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>kernel</label>
+                            <select x-model="filterKernel">
+                                <option value="all">all</option>
+                                <option value="rbf">rbf</option>
+                                <option value="matern15">matern15</option>
+                                <option value="matern25">matern25</option>
+                                <option value="exponential">exponential</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="panel-body">
+                        <template x-if="filteredResults.length > 0">
+                            <div>
+                                <div class="summary-row">
+                                    <div class="summary-box">
+                                        <div class="summary-label">best rmse</div>
+                                        <div class="summary-value" x-text="Math.min(...filteredResults.map(r => r.rmse)).toFixed(4)"></div>
                                     </div>
-                                    <div class="bg-black/50 rounded-lg p-3 text-center">
-                                        <div class="text-xs text-gray-400">Best NRMSE</div>
-                                        <div class="text-lg font-bold text-green-400" x-text="filteredResults.length ? Math.min(...filteredResults.map(r => r.nrmse)).toFixed(4) : '-'"></div>
+                                    <div class="summary-box">
+                                        <div class="summary-label">best nrmse</div>
+                                        <div class="summary-value" x-text="Math.min(...filteredResults.map(r => r.nrmse)).toFixed(4)"></div>
                                     </div>
-                                    <div class="bg-black/50 rounded-lg p-3 text-center">
-                                        <div class="text-xs text-gray-400">Methods</div>
-                                        <div class="text-lg font-bold text-orange-400" x-text="[...new Set(filteredResults.map(r => r.method))].length"></div>
+                                    <div class="summary-box">
+                                        <div class="summary-label">methods</div>
+                                        <div class="summary-value" x-text="[...new Set(filteredResults.map(r => r.method))].length"></div>
                                     </div>
                                 </div>
-                                <div class="overflow-x-auto max-h-96 overflow-y-auto">
-                                    <table class="w-full text-sm">
-                                        <thead class="sticky top-0 bg-gray-900">
-                                            <tr class="text-left text-gray-400 border-b border-gray-700">
-                                                <th class="pb-2 pr-4">Field</th>
-                                                <th class="pb-2 pr-4">Method</th>
-                                                <th class="pb-2 pr-4">Kernel</th>
-                                                <th class="pb-2 pr-4">RMSE</th>
-                                                <th class="pb-2">NRMSE</th>
+
+                                <div class="table-wrap">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th>field</th>
+                                                <th>method</th>
+                                                <th>kernel</th>
+                                                <th>rmse</th>
+                                                <th>nrmse</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <template x-for="result in filteredResults" :key="result.field + result.method + result.kernel">
-                                                <tr class="border-b border-gray-800 hover:bg-gray-800/50">
-                                                    <td class="py-2 pr-4 text-white" x-text="result.field"></td>
-                                                    <td class="py-2 pr-4">
-                                                        <span class="px-2 py-0.5 rounded text-xs font-medium"
+                                                <tr>
+                                                    <td x-text="result.field"></td>
+                                                    <td>
+                                                        <span class="badge-method"
                                                             :class="{
-                                                                'bg-blue-500/20 text-blue-400': result.method === 'standard_gp',
-                                                                'bg-orange-500/20 text-orange-400': result.method === 'mchutchon_nigp',
-                                                                'bg-purple-500/20 text-purple-400': result.method === 'girard'
+                                                                'badge-blue': result.method === 'standard_gp',
+                                                                'badge-purple': result.method === 'mchutchon_nigp',
+                                                                'badge-yellow': result.method === 'girard'
                                                             }"
-                                                            x-text="result.method.replace('_', ' ')"></span>
+                                                            x-text="result.method"></span>
                                                     </td>
-                                                    <td class="py-2 pr-4 text-gray-400" x-text="result.kernel"></td>
-                                                    <td class="py-2 pr-4 font-mono"
-                                                        :class="result.rmse === Math.min(...filteredResults.filter(r => r.field === result.field).map(r => r.rmse)) ? 'text-green-400 font-bold' : 'text-yellow-400'"
+                                                    <td x-text="result.kernel"></td>
+                                                    <td :class="result.rmse === Math.min(...filteredResults.filter(r => r.field === result.field).map(r => r.rmse)) ? 'text-best' : ''"
                                                         x-text="result.rmse.toFixed(4)"></td>
-                                                    <td class="py-2 font-mono"
-                                                        :class="result.nrmse === Math.min(...filteredResults.filter(r => r.field === result.field).map(r => r.nrmse)) ? 'text-green-400 font-bold' : 'text-yellow-400'"
+                                                    <td :class="result.nrmse === Math.min(...filteredResults.filter(r => r.field === result.field).map(r => r.nrmse)) ? 'text-best' : ''"
                                                         x-text="result.nrmse.toFixed(4)"></td>
                                                 </tr>
                                             </template>
@@ -513,273 +1006,131 @@
                                     </table>
                                 </div>
                             </div>
-                            <div x-show="reconResults.length === 0 && !reconRunning" class="text-center py-12">
-                                <i class="fas fa-chart-area text-4xl text-gray-700 mb-3"></i>
-                                <p class="text-gray-500">No results yet. Run a reconstruction or load existing results.</p>
+                        </template>
+
+                        <template x-if="reconResults.length === 0 && !reconRunning">
+                            <div class="empty-state">
+                                <i class="fas fa-chart-area"></i>
+                                <p>run reconstruction to see results</p>
                             </div>
-                            <div x-show="reconRunning" class="text-center py-12">
-                                <i class="fas fa-spinner fa-spin text-4xl text-orange-400 mb-3"></i>
-                                <p class="text-gray-400">Running GP reconstruction on GPU...</p>
-                                <p class="text-xs text-gray-500 mt-2">This may take a few minutes</p>
-                            </div>
-                        </div>
+                        </template>
 
-                        <!-- Reconstruction Error -->
-                        <div class="glass rounded-2xl p-6 border-2 border-red-500/50" x-show="reconError && !reconRunning">
-                            <h2 class="text-lg font-semibold text-red-400 mb-4 flex items-center gap-2">
-                                <i class="fas fa-exclamation-triangle"></i>
-                                Reconstruction Failed
-                            </h2>
-                            <div class="bg-black/50 rounded-lg p-4 mb-4">
-                                <p class="text-red-300 text-sm font-mono whitespace-pre-wrap" x-text="reconError"></p>
-                            </div>
-                            <div class="text-sm text-gray-400">
-                                <p class="mb-2"><strong class="text-white">Possible causes:</strong></p>
-                                <ul class="list-disc list-inside space-y-1 ml-2">
-                                    <li>Trial simulation didn't complete (empty CSV files)</li>
-                                    <li>Trial data is corrupted or invalid</li>
-                                    <li>Insufficient GPU memory</li>
-                                    <li>Reconstruction script error</li>
-                                </ul>
-                                <p class="mt-3 text-orange-400">
-                                    <i class="fas fa-info-circle mr-1"></i>
-                                    Check the trial simulation logs or try running the trial again.
-                                </p>
-                            </div>
-                            <div class="mt-4 pt-4 border-t border-red-500/30">
-                                <p class="text-sm text-gray-400 mb-3">
-                                    <strong class="text-white">Remove this trial?</strong> If this trial is corrupted or you don't need it, you can delete all its data.
-                                </p>
-                                <button @click="deleteTrialData()"
-                                    class="w-full py-2 bg-red-600 hover:bg-red-500 text-white font-medium rounded-lg transition-all flex items-center justify-center gap-2">
-                                    <i class="fas fa-trash"></i> Delete Trial <span x-text="reconTrial"></span> Data
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Comparison Heatmap -->
-                        <div class="glass rounded-2xl p-6" x-show="hasComparisonHeatmap">
-                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-th text-green-400"></i>
-                                Comparison Heatmap
-                            </h2>
-                            <template x-for="img in reconImages.filter(i => i.name.includes('comparison') || i.name.includes('heatmap') || i.path.includes('comparison'))" :key="img.path">
-                                <div class="cursor-pointer" @click="openImageModal(img.url)">
-                                    <img :src="img.url" :alt="img.name" class="w-full rounded-lg hover:opacity-90 transition-opacity">
-                                    <p class="text-xs text-gray-400 mt-2 text-center">Click to enlarge</p>
-                                </div>
-                            </template>
-                        </div>
-
-                        <!-- Filtered Reconstruction Images -->
-                        <div class="glass rounded-2xl p-6" x-show="filteredImages.length > 0">
-                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-images text-yellow-400"></i>
-                                Reconstruction Images
-                                <span class="ml-auto text-sm font-normal text-gray-400" x-text="filteredImages.length + ' images'"></span>
-                            </h2>
-                            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto">
-                                <template x-for="img in filteredImages" :key="img.path">
-                                    <div class="bg-black/50 rounded-lg p-2 cursor-pointer hover:bg-gray-800/50 transition-colors" @click="openImageModal(img.url)">
-                                        <img :src="img.url" :alt="img.name" class="w-full rounded aspect-square object-cover">
-                                        <p class="text-xs text-gray-400 mt-1 truncate" x-text="formatImageName(img.name)"></p>
-                                    </div>
-                                </template>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Image Modal -->
-            <div x-show="imageModalOpen" x-cloak
-                class="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
-                @click="imageModalOpen = false">
-                <img :src="imageModalUrl" class="max-w-full max-h-full rounded-lg shadow-2xl">
-                <button class="absolute top-4 right-4 text-white text-2xl" @click="imageModalOpen = false">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-
-            <!-- Tab: Host PC -->
-            <div x-show="currentTab === 'host'" x-cloak x-init="$watch('currentTab', val => val === 'host' && checkHostVncStatus())">
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <!-- Remote Desktop Control -->
-                    <div class="space-y-6">
-                        <div class="glass rounded-2xl p-6">
-                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-desktop text-orange-400"></i>
-                                Remote Desktop
-                            </h2>
-                            <div class="space-y-4">
-                                <!-- Status Cards -->
-                                <div class="grid grid-cols-2 gap-3">
-                                    <div class="bg-black/50 rounded-lg p-3">
-                                        <div class="flex items-center gap-2 mb-1">
-                                            <span class="w-2 h-2 rounded-full" :class="hostVncStatus.x11vnc ? 'bg-green-500' : 'bg-gray-600'"></span>
-                                            <span class="text-sm text-gray-400">x11vnc</span>
-                                        </div>
-                                        <div class="text-xs" :class="hostVncStatus.x11vnc ? 'text-green-400' : 'text-gray-500'"
-                                            x-text="hostVncStatus.x11vnc ? 'Port 5900' : 'Stopped'"></div>
-                                    </div>
-                                    <div class="bg-black/50 rounded-lg p-3">
-                                        <div class="flex items-center gap-2 mb-1">
-                                            <span class="w-2 h-2 rounded-full" :class="hostVncStatus.novnc ? 'bg-green-500' : 'bg-gray-600'"></span>
-                                            <span class="text-sm text-gray-400">noVNC</span>
-                                        </div>
-                                        <div class="text-xs" :class="hostVncStatus.novnc ? 'text-green-400' : 'text-gray-500'"
-                                            x-text="hostVncStatus.novnc ? 'Port 6080' : 'Stopped'"></div>
-                                    </div>
-                                </div>
-
-                                <!-- Control Buttons -->
-                                <div class="flex gap-3">
-                                    <template x-if="!hostVncRunning">
-                                        <button @click="startHostVNC()"
-                                            class="flex-1 py-3 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2">
-                                            <i class="fas fa-play"></i> Start Remote Desktop
-                                        </button>
-                                    </template>
-                                    <template x-if="hostVncRunning">
-                                        <button @click="stopHostVNC()"
-                                            class="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2">
-                                            <i class="fas fa-stop"></i> Stop
-                                        </button>
-                                    </template>
-                                    <button @click="checkHostVncStatus()"
-                                        class="px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl transition-all">
-                                        <i class="fas fa-sync-alt"></i>
-                                    </button>
-                                </div>
-
-                                <!-- Connect Button -->
-                                <template x-if="hostVncRunning">
-                                    <a :href="getHostVncUrl()" target="_blank"
-                                        class="block w-full py-4 bg-gradient-to-r from-orange-600 to-yellow-600 hover:from-orange-500 hover:to-yellow-500 text-black font-bold rounded-xl transition-all text-center glow-orange">
-                                        <i class="fas fa-external-link-alt mr-2"></i>
-                                        Open Remote Desktop in Browser
-                                    </a>
-                                </template>
-
-                                <!-- Instructions -->
-                                <div class="p-4 bg-black/50 rounded-lg space-y-2 text-sm">
-                                    <div class="text-gray-400">
-                                        <i class="fas fa-info-circle text-orange-400 mr-2"></i>
-                                        <strong class="text-white">Dual Monitor Support:</strong> Both monitors are captured.
-                                    </div>
-                                    <div class="text-gray-400">
-                                        <i class="fas fa-globe text-orange-400 mr-2"></i>
-                                        <strong class="text-white">Web Access:</strong> noVNC provides browser-based access (port 6080)
-                                    </div>
-                                    <div class="text-gray-400">
-                                        <i class="fas fa-desktop text-orange-400 mr-2"></i>
-                                        <strong class="text-white">VNC Client:</strong> Connect to localhost:5900
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Setup Instructions -->
-                        <div class="glass rounded-2xl p-6">
-                            <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-cog text-yellow-400"></i>
-                                First Time Setup
-                            </h3>
-                            <div class="space-y-3 text-sm">
-                                <p class="text-gray-400">Run the setup script to install required packages:</p>
-                                <code class="block bg-black p-3 rounded-lg text-orange-400 text-xs">
-                                    cd ~/workspaces/aquatic-mapping/web<br>
-                                    ./scripts/setup-remote-desktop.sh
-                                </code>
-                                <p class="text-gray-500 text-xs">This installs x11vnc and noVNC for web-based remote access.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- System Info -->
-                    <div class="space-y-6">
-                        <div class="glass rounded-2xl p-6">
-                            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                                <i class="fas fa-server text-yellow-400"></i>
-                                System Information
-                            </h2>
-                            <div class="space-y-3">
-                                <div class="bg-black/50 rounded-lg p-4 space-y-3 text-sm">
-                                    <div class="flex justify-between items-center">
-                                        <span class="text-gray-400">Status</span>
-                                        <span class="flex items-center gap-2">
-                                            <span class="w-2 h-2 rounded-full bg-green-500 pulse-dot"></span>
-                                            <span class="text-green-400">Online</span>
-                                        </span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span class="text-gray-400">GPU</span>
-                                        <span class="text-orange-400" x-text="system.gpu ? system.gpu.name : 'N/A'"></span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span class="text-gray-400">GPU Memory</span>
-                                        <span class="text-white" x-text="system.gpu ? Math.round(system.gpu.memory_total_mb/1024) + ' GB' : 'N/A'"></span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span class="text-gray-400">System RAM</span>
-                                        <span class="text-white" x-text="system.memory_total_gb + ' GB'"></span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span class="text-gray-400">CPU Usage</span>
-                                        <span class="text-orange-400" x-text="system.cpu_percent + '%'"></span>
-                                    </div>
-                                    <div class="flex justify-between">
-                                        <span class="text-gray-400">Memory Usage</span>
-                                        <span class="text-yellow-400" x-text="system.memory_used_gb + '/' + system.memory_total_gb + ' GB'"></span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- GPU Stats -->
-                        <template x-if="system.gpu">
-                            <div class="glass rounded-2xl p-6">
-                                <div class="flex items-center gap-2 mb-4">
-                                    <i class="fas fa-bolt text-orange-400 text-lg"></i>
-                                    <span class="text-lg font-semibold text-white">GPU Stats</span>
-                                </div>
-                                <div class="space-y-4">
-                                    <div>
-                                        <div class="flex justify-between text-sm mb-2">
-                                            <span class="text-gray-400">Utilization</span>
-                                            <span class="text-orange-400 font-bold" x-text="system.gpu.utilization + '%'"></span>
-                                        </div>
-                                        <div class="h-3 bg-gray-800 rounded-full overflow-hidden">
-                                            <div class="h-full bg-gradient-to-r from-orange-600 to-yellow-400 progress-bar" :style="'width: ' + system.gpu.utilization + '%'"></div>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div class="flex justify-between text-sm mb-2">
-                                            <span class="text-gray-400">Memory</span>
-                                            <span class="text-yellow-400 font-bold" x-text="Math.round(system.gpu.memory_used_mb/1024*10)/10 + '/' + Math.round(system.gpu.memory_total_mb/1024*10)/10 + ' GB'"></span>
-                                        </div>
-                                        <div class="h-3 bg-gray-800 rounded-full overflow-hidden">
-                                            <div class="h-full bg-gradient-to-r from-yellow-600 to-orange-400 progress-bar" :style="'width: ' + (system.gpu.memory_used_mb / system.gpu.memory_total_mb * 100) + '%'"></div>
-                                        </div>
-                                    </div>
-                                </div>
+                        <template x-if="reconRunning">
+                            <div class="empty-state">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>running gp reconstruction...</p>
                             </div>
                         </template>
                     </div>
                 </div>
             </div>
-        </main>
 
-        <!-- Toast Notifications -->
-        <div class="fixed bottom-4 right-4 space-y-2 z-50" x-show="notifications.length > 0">
-            <template x-for="(notif, index) in notifications" :key="index">
-                <div class="glass rounded-lg px-4 py-3 flex items-center gap-3 border"
-                    :class="notif.type === 'success' ? 'border-green-500/50' : notif.type === 'error' ? 'border-red-500/50' : 'border-orange-500/50'">
-                    <i :class="notif.type === 'success' ? 'fas fa-check-circle text-green-400' : notif.type === 'error' ? 'fas fa-times-circle text-red-400' : 'fas fa-info-circle text-orange-400'"></i>
-                    <span class="text-white text-sm" x-text="notif.message"></span>
+            <!-- Images -->
+            <div class="panel" style="margin-top: 16px;" x-show="filteredImages.length > 0">
+                <div class="panel-header">
+                    <span class="panel-title"><i class="fas fa-images"></i> images</span>
+                    <span class="badge" x-text="filteredImages.length + ' images'"></span>
                 </div>
-            </template>
+                <div class="image-grid">
+                    <template x-for="img in filteredImages" :key="img.path">
+                        <div class="image-card" @click="openImageModal(img.url)">
+                            <img :src="img.url" :alt="img.name">
+                        </div>
+                    </template>
+                </div>
+            </div>
         </div>
+
+        <!-- Tab: Host PC -->
+        <div x-show="currentTab === 'host'" x-cloak x-init="$watch('currentTab', val => val === 'host' && checkHostVncStatus())">
+            <div class="grid-2">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title"><i class="fas fa-desktop"></i> remote desktop</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="vnc-status-grid">
+                            <div class="vnc-status-item">
+                                <span class="dot" :style="hostVncStatus.x11vnc ? 'background: var(--accent)' : 'background: var(--text-dim)'"></span>
+                                <span> x11vnc</span>
+                                <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;" x-text="hostVncStatus.x11vnc ? 'port 5900' : 'stopped'"></div>
+                            </div>
+                            <div class="vnc-status-item">
+                                <span class="dot" :style="hostVncStatus.novnc ? 'background: var(--accent)' : 'background: var(--text-dim)'"></span>
+                                <span> novnc</span>
+                                <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;" x-text="hostVncStatus.novnc ? 'port 6080' : 'stopped'"></div>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                            <template x-if="!hostVncRunning">
+                                <button @click="startHostVNC()" class="btn btn-primary" style="flex: 1;">
+                                    <i class="fas fa-play"></i> start
+                                </button>
+                            </template>
+                            <template x-if="hostVncRunning">
+                                <button @click="stopHostVNC()" class="btn btn-danger" style="flex: 1;">
+                                    <i class="fas fa-stop"></i> stop
+                                </button>
+                            </template>
+                            <button @click="checkHostVncStatus()" class="btn">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+
+                        <template x-if="hostVncRunning">
+                            <a :href="getHostVncUrl()" target="_blank" class="btn btn-primary btn-block">
+                                <i class="fas fa-external-link-alt"></i> open desktop
+                            </a>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title"><i class="fas fa-server"></i> system info</span>
+                    </div>
+                    <div class="panel-body">
+                        <div class="info-row">
+                            <span class="info-label">status</span>
+                            <span style="color: var(--accent);"><span class="dot pulse" style="display: inline-block; margin-right: 6px;"></span>online</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">gpu</span>
+                            <span x-text="system.gpu ? system.gpu.name : 'N/A'"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">gpu memory</span>
+                            <span x-text="system.gpu ? Math.round(system.gpu.memory_total_mb/1024) + ' GB' : 'N/A'"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">system ram</span>
+                            <span x-text="system.memory_total_gb + ' GB'"></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">cpu usage</span>
+                            <span style="color: var(--accent);" x-text="system.cpu_percent + '%'"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Image Modal -->
+    <div x-show="imageModalOpen" x-cloak class="modal-overlay" @click="imageModalOpen = false">
+        <img :src="imageModalUrl">
+        <button class="modal-close" @click="imageModalOpen = false"><i class="fas fa-times"></i></button>
+    </div>
+
+    <!-- Toasts -->
+    <div class="toast-container" x-show="notifications.length > 0">
+        <template x-for="(notif, index) in notifications" :key="index">
+            <div class="toast" :class="notif.type">
+                <i :class="notif.type === 'success' ? 'fas fa-check-circle' : notif.type === 'error' ? 'fas fa-times-circle' : 'fas fa-info-circle'"></i>
+                <span x-text="notif.message"></span>
+            </div>
+        </template>
     </div>
 
     <script>
@@ -796,24 +1147,39 @@
                 system: { cpu_percent: 0, memory_percent: 0, memory_used_gb: 0, memory_total_gb: 0, gpu: null },
                 notifications: [],
                 ws: null,
-                // Reconstruction
                 reconTrial: '1',
                 reconRunning: false,
                 reconResults: [],
                 reconImages: [],
                 reconError: null,
-                // Filters for results display
                 filterField: 'all',
                 filterMethod: 'all',
                 filterKernel: 'all',
-                // Image modal
                 imageModalOpen: false,
                 imageModalUrl: '',
-                // Host VNC
                 hostVncRunning: false,
                 hostVncStatus: { x11vnc: false, novnc: false },
 
-                // Computed: filtered results based on filter selections
+                // Auth helper - get authorization header
+                getAuthHeader() {
+                    const auth = sessionStorage.getItem('auth');
+                    return auth ? { 'Authorization': 'Basic ' + auth } : {};
+                },
+
+                // Authenticated fetch wrapper
+                async authFetch(url, options = {}) {
+                    const headers = { ...options.headers, ...this.getAuthHeader() };
+                    const response = await fetch(url, { ...options, headers });
+                    if (response.status === 401) {
+                        // Not authenticated, redirect to login
+                        sessionStorage.removeItem('auth');
+                        sessionStorage.removeItem('username');
+                        window.location.href = '/login';
+                        throw new Error('Unauthorized');
+                    }
+                    return response;
+                },
+
                 get filteredResults() {
                     return this.reconResults.filter(r => {
                         if (this.filterField !== 'all' && r.field !== this.filterField) return false;
@@ -823,54 +1189,33 @@
                     });
                 },
 
-                // Computed: check if comparison heatmap exists
                 get hasComparisonHeatmap() {
-                    const has = this.reconImages.some(i =>
-                        i.name.includes('comparison') ||
-                        i.name.includes('heatmap') ||
-                        i.path.includes('comparison')
-                    );
-                    return has;
+                    return this.reconImages.some(i => i.name.includes('comparison') || i.name.includes('heatmap') || i.path.includes('comparison'));
                 },
 
-                // Computed: filtered images based on filter selections
                 get filteredImages() {
                     return this.reconImages.filter(img => {
-                        // Skip comparison/heatmap images (shown separately)
-                        if (img.name.includes('comparison') || img.name.includes('heatmap') || img.path.includes('comparison')) {
-                            return false;
-                        }
-
-                        // Parse path to extract method, field, kernel
-                        // Path format: method/field/kernel/filename.png
+                        if (img.name.includes('comparison') || img.name.includes('heatmap') || img.path.includes('comparison')) return false;
                         const parts = img.path.split('/');
-                        if (parts.length < 4) return false; // Need at least method/field/kernel/filename
-
-                        const method = parts[0]; // e.g., standard_gp, mchutchon_nigp, girard
-                        const field = parts[1];  // e.g., radial, x_compress, etc.
-                        const kernel = parts[2]; // e.g., rbf, matern15, etc.
-
+                        if (parts.length < 4) return false;
+                        const method = parts[0], field = parts[1], kernel = parts[2];
                         if (this.filterField !== 'all' && field !== this.filterField) return false;
                         if (this.filterMethod !== 'all' && method !== this.filterMethod) return false;
                         if (this.filterKernel !== 'all' && kernel !== this.filterKernel) return false;
-
                         return true;
                     });
                 },
 
-                // Format image name for display
-                formatImageName(name) {
-                    return name.replace(/_/g, ' ').replace('.png', '').replace('.jpg', '');
-                },
-
                 init() {
+                    // Check if authenticated
+                    if (!sessionStorage.getItem('auth')) {
+                        window.location.href = '/login';
+                        return;
+                    }
                     this.connectWebSocket();
                     this.refreshStatus();
                     this.loadCompletedTrials().then(() => {
-                        // Auto-load reconstruction results if trials exist
-                        if (this.reconTrial) {
-                            this.loadExistingResults();
-                        }
+                        if (this.reconTrial) this.loadExistingResults();
                     });
                     this.checkHostVncStatus();
                 },
@@ -889,100 +1234,95 @@
 
                 async refreshStatus() {
                     try {
-                        const response = await fetch('/api/status');
+                        const response = await this.authFetch('/api/status');
                         const data = await response.json();
                         this.containers = data.containers;
                         this.system = data.system;
-                    } catch (e) { console.error(e); }
+                        this.connected = true;
+                    } catch (e) {
+                        console.error(e);
+                        this.connected = false;
+                    }
                 },
 
                 async loadCompletedTrials() {
                     try {
-                        const response = await fetch('/api/trials/completed', { credentials: 'include' });
+                        const response = await this.authFetch('/api/trials/completed');
                         this.completedTrials = await response.json();
-                        if (this.completedTrials.length > 0) {
-                            this.reconTrial = this.completedTrials[0].id;
-                        }
+                        if (this.completedTrials.length > 0) this.reconTrial = this.completedTrials[0].id;
                         return this.completedTrials;
-                    } catch (e) {
-                        console.error(e);
-                        return [];
-                    }
+                    } catch (e) { return []; }
                 },
 
                 async startBatch() {
                     this.loading = true;
                     try {
-                        const response = await fetch('/api/batch/start', {
+                        const response = await this.authFetch('/api/batch/start', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ start_trial: parseInt(this.batchStart), end_trial: parseInt(this.batchEnd), concurrent: parseInt(this.concurrent) })
                         });
                         const data = await response.json();
-                        this.notify('success', `Started ${data.started.length} trials`);
+                        this.notify('success', `started ${data.started.length} trials`);
                         this.refreshStatus();
-                    } catch (e) { this.notify('error', 'Failed to start batch'); }
+                    } catch (e) { this.notify('error', 'failed to start batch'); }
                     this.loading = false;
                 },
 
                 async startSingleTrial() {
-                    const trialId = prompt('Enter trial number:');
+                    const trialId = prompt('enter trial number:');
                     if (trialId) {
                         try {
-                            await fetch(`/api/trial/start/${trialId}`, { method: 'POST' });
-                            this.notify('success', `Trial ${trialId} started`);
+                            await this.authFetch(`/api/trial/start/${trialId}`, { method: 'POST' });
+                            this.notify('success', `trial ${trialId} started`);
                             this.refreshStatus();
-                        } catch (e) { this.notify('error', 'Failed to start trial'); }
+                        } catch (e) { this.notify('error', 'failed to start trial'); }
                     }
                 },
 
                 async stopTrial(trialId) {
                     try {
-                        await fetch(`/api/trial/stop/${trialId}`, { method: 'POST' });
-                        this.notify('success', `Trial ${trialId} stopped`);
+                        await this.authFetch(`/api/trial/stop/${trialId}`, { method: 'POST' });
+                        this.notify('success', `trial ${trialId} stopped`);
                         this.refreshStatus();
-                    } catch (e) { this.notify('error', 'Failed to stop trial'); }
+                    } catch (e) { this.notify('error', 'failed to stop trial'); }
                 },
 
                 async removeTrial(trialId) {
                     try {
-                        await fetch(`/api/trial/${trialId}`, { method: 'DELETE' });
-                        this.notify('success', `Trial ${trialId} removed`);
+                        await this.authFetch(`/api/trial/${trialId}`, { method: 'DELETE' });
+                        this.notify('success', `trial ${trialId} removed`);
                         this.refreshStatus();
-                    } catch (e) { this.notify('error', 'Failed to remove trial'); }
+                    } catch (e) { this.notify('error', 'failed to remove trial'); }
                 },
 
                 getTrialVncUrl(trialId, vncPort) {
                     const hostname = window.location.hostname;
-                    // If accessing locally, use direct port
                     if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
                         return `http://${hostname}:${vncPort}/vnc.html`;
                     }
-                    // If accessing remotely via domain, use trial subdomain
                     return `https://trial${trialId}.${hostname}/vnc.html`;
                 },
 
                 getHostVncUrl() {
                     const hostname = window.location.hostname;
-                    // If accessing locally, use direct port
                     if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.')) {
                         return `http://${hostname}:6080/vnc.html`;
                     }
-                    // If accessing remotely via domain, use vnc subdomain
                     return `https://vnc.${hostname}/vnc.html`;
                 },
 
                 async stopAll() {
-                    if (confirm('Stop all running trials?')) {
+                    if (confirm('stop all running trials?')) {
                         try {
-                            await fetch('/api/batch/stop', { method: 'POST' });
-                            this.notify('success', 'All trials stopped');
+                            await this.authFetch('/api/batch/stop', { method: 'POST' });
+                            this.notify('success', 'all trials stopped');
                             this.refreshStatus();
-                        } catch (e) { this.notify('error', 'Failed to stop trials'); }
+                        } catch (e) { this.notify('error', 'failed to stop trials'); }
                     }
                 },
 
-                async runReconstruction(trialId) {
+                runReconstruction(trialId) {
                     this.reconTrial = trialId;
                     this.currentTab = 'reconstruction';
                 },
@@ -992,26 +1332,21 @@
                     this.reconResults = [];
                     this.reconError = null;
                     try {
-                        // Start reconstruction with all fields and all methods
-                        const response = await fetch(`/api/reconstruct/${this.reconTrial}`, {
+                        const response = await this.authFetch(`/api/reconstruct/${this.reconTrial}`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                field: 'all',
-                                method: 'all'
-                            })
+                            body: JSON.stringify({ field: 'all', method: 'all' })
                         });
                         const data = await response.json();
                         if (data.success) {
-                            this.notify('info', `Reconstruction started for trial ${this.reconTrial}`);
-                            // Poll for completion
+                            this.notify('info', `reconstruction started for trial ${this.reconTrial}`);
                             this.pollReconstructionStatus();
                         } else {
-                            this.notify('error', data.message || 'Failed to start reconstruction');
+                            this.notify('error', data.message || 'failed');
                             this.reconRunning = false;
                         }
                     } catch (e) {
-                        this.notify('error', 'Reconstruction failed');
+                        this.notify('error', 'reconstruction failed');
                         this.reconRunning = false;
                     }
                 },
@@ -1019,28 +1354,23 @@
                 async pollReconstructionStatus() {
                     const poll = async () => {
                         try {
-                            const response = await fetch(`/api/reconstruct/${this.reconTrial}/status`, { credentials: 'include' });
+                            const response = await this.authFetch(`/api/reconstruct/${this.reconTrial}/status`);
                             const data = await response.json();
                             if (data.running) {
                                 setTimeout(poll, 2000);
                             } else {
-                                // Reconstruction finished - check if it succeeded or failed
-                                console.log('Reconstruction completed for trial', this.reconTrial, 'success:', data.success);
                                 if (data.success === false || data.return_code !== 0) {
-                                    // Reconstruction failed
-                                    this.reconError = data.error || 'Reconstruction failed. Trial may have no data or invalid data.';
-                                    this.notify('error', `Trial ${this.reconTrial} reconstruction failed`);
+                                    this.reconError = data.error || 'failed';
+                                    this.notify('error', 'reconstruction failed');
                                     this.reconRunning = false;
                                 } else {
-                                    // Reconstruction succeeded - wait a moment for files to be written
                                     this.reconError = null;
                                     setTimeout(() => this.loadReconstructionResults(), 1000);
                                 }
                             }
                         } catch (e) {
-                            console.error('Poll error:', e);
                             this.reconRunning = false;
-                            this.reconError = 'Failed to check reconstruction status';
+                            this.reconError = 'status check failed';
                         }
                     };
                     poll();
@@ -1048,30 +1378,19 @@
 
                 async loadReconstructionResults() {
                     try {
-                        const response = await fetch(`/api/reconstruct/${this.reconTrial}/results`, { credentials: 'include' });
+                        const response = await this.authFetch(`/api/reconstruct/${this.reconTrial}/results`);
                         if (response.ok) {
                             const data = await response.json();
                             this.reconResults = data.results || [];
-                        } else if (response.status === 404) {
-                            // Results dir may not exist yet or no results
-                            this.reconResults = [];
                         } else {
                             this.reconResults = [];
                         }
-                        // Also load images
                         await this.loadReconstructionImages();
-
                         if (this.reconResults.length > 0) {
-                            this.notify('success', `Loaded ${this.reconResults.length} results for trial ${this.reconTrial}.`);
-                        } else if (this.reconImages.length > 0) {
-                            this.notify('info', `Images loaded but no metrics for trial ${this.reconTrial}.`);
-                        } else {
-                            this.notify('info', 'No results found. The reconstruction may have failed or is still processing.');
+                            this.notify('success', `loaded ${this.reconResults.length} results`);
                         }
-                        console.log('loadReconstructionResults complete - results:', this.reconResults.length, 'images:', this.reconImages.length);
                     } catch (e) {
-                        console.error('loadReconstructionResults error:', e);
-                        this.notify('error', 'Failed to load results');
+                        this.notify('error', 'failed to load results');
                         this.reconResults = [];
                         this.reconImages = [];
                     }
@@ -1080,153 +1399,57 @@
 
                 async loadReconstructionImages() {
                     try {
-                        const response = await fetch(`/api/reconstruct/${this.reconTrial}/images`, { credentials: 'include' });
+                        const response = await this.authFetch(`/api/reconstruct/${this.reconTrial}/images`);
                         if (response.ok) {
                             const data = await response.json();
                             this.reconImages = data.images || [];
-                            console.log('Loaded images for trial', this.reconTrial, ':', this.reconImages.length);
-                            // Debug: log comparison images
-                            const comparisonImgs = this.reconImages.filter(i => i.name.includes('comparison') || i.name.includes('heatmap'));
-                            if (comparisonImgs.length > 0) {
-                                console.log('Found comparison heatmaps:', comparisonImgs);
-                            }
                         } else {
-                            console.log('No images found for trial', this.reconTrial, '(status:', response.status, ')');
                             this.reconImages = [];
                         }
                     } catch (e) {
-                        console.error('Failed to load images', e);
                         this.reconImages = [];
                     }
                 },
 
                 async loadExistingResults() {
                     if (!this.reconTrial) return;
-                    this.reconError = null;  // Clear any previous errors
+                    this.reconError = null;
                     try {
-                        const response = await fetch(`/api/reconstruct/${this.reconTrial}/results`, { credentials: 'include' });
+                        const response = await this.authFetch(`/api/reconstruct/${this.reconTrial}/results`);
                         if (response.ok) {
                             const data = await response.json();
                             this.reconResults = data.results || [];
-                        } else if (response.status === 404) {
-                            // No results yet - check if reconstruction previously failed
-                            this.reconResults = [];
-                            // Check if there's a log file with errors
-                            const statusRes = await fetch(`/api/reconstruct/${this.reconTrial}/status`, { credentials: 'include' });
-                            if (statusRes.ok) {
-                                const statusData = await statusRes.json();
-                                if (statusData.success === false && statusData.error) {
-                                    this.reconError = statusData.error;
-                                }
-                            }
                         } else {
-                            console.error('Failed to load results:', response.status);
                             this.reconResults = [];
                         }
-                        // Always try to load images (might exist even without metrics)
                         await this.loadReconstructionImages();
-                        console.log('Loaded for trial', this.reconTrial, '- results:', this.reconResults.length, 'images:', this.reconImages.length);
                     } catch (e) {
-                        console.error('Failed to load results:', e);
                         this.reconResults = [];
                         this.reconImages = [];
                     }
                 },
 
-                async reconstructAll() {
-                    if (this.completedTrials.length === 0) return;
-                    this.notify('info', `Reconstructing ${this.completedTrials.length} trials sequentially...`);
-
-                    for (let i = 0; i < this.completedTrials.length; i++) {
-                        const trial = this.completedTrials[i];
-                        this.reconTrial = trial.id;
-                        this.notify('info', `[${i+1}/${this.completedTrials.length}] Reconstructing trial ${trial.id}...`);
-
-                        // Start reconstruction and wait for it to complete
-                        await this.startReconstructionAndWait();
-                    }
-                    this.notify('success', 'All trials reconstructed!');
-                },
-
-                async startReconstructionAndWait() {
-                    return new Promise(async (resolve) => {
-                        this.reconRunning = true;
-                        this.reconError = null;
-                        try {
-                            const response = await fetch(`/api/reconstruct/${this.reconTrial}`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ field: 'all', method: 'all' })
-                            });
-                            const data = await response.json();
-                            if (data.success) {
-                                // Poll until done
-                                const poll = async () => {
-                                    const statusRes = await fetch(`/api/reconstruct/${this.reconTrial}/status`);
-                                    const status = await statusRes.json();
-                                    if (status.running) {
-                                        setTimeout(poll, 2000);
-                                    } else {
-                                        // Check if it failed
-                                        if (status.success === false || status.return_code !== 0) {
-                                            this.reconError = status.error || 'Reconstruction failed';
-                                        } else {
-                                            await this.loadReconstructionResults();
-                                        }
-                                        this.reconRunning = false;
-                                        resolve();
-                                    }
-                                };
-                                poll();
-                            } else {
-                                this.reconRunning = false;
-                                resolve();
-                            }
-                        } catch (e) {
-                            this.reconRunning = false;
-                            this.reconError = 'Failed to start reconstruction';
-                            resolve();
-                        }
-                    });
-                },
-
                 async generateComparisonHeatmap() {
-                    if (this.reconResults.length === 0) {
-                        this.notify('error', 'No reconstruction results to compare');
-                        return;
-                    }
-
+                    if (this.reconResults.length === 0) return;
                     this.reconRunning = true;
-                    this.notify('info', `Generating comparison heatmap for trial ${this.reconTrial}...`);
-
                     try {
-                        const response = await fetch(`/api/reconstruct/${this.reconTrial}/generate-heatmap`, {
-                            method: 'POST',
-                            credentials: 'include'
-                        });
+                        const response = await this.authFetch(`/api/reconstruct/${this.reconTrial}/generate-heatmap`, { method: 'POST' });
                         const data = await response.json();
-
                         if (data.success) {
-                            this.notify('success', 'Comparison heatmap generated!');
-                            // Reload images to show the new heatmap
+                            this.notify('success', 'heatmap generated');
                             await this.loadReconstructionImages();
                         } else {
-                            this.notify('error', data.message || 'Failed to generate heatmap');
-                            console.error('Heatmap generation error:', data.error || data.output);
+                            this.notify('error', 'failed to generate heatmap');
                         }
                     } catch (e) {
-                        this.notify('error', 'Failed to generate comparison heatmap');
-                        console.error('Heatmap generation error:', e);
-                    } finally {
-                        this.reconRunning = false;
+                        this.notify('error', 'failed to generate heatmap');
                     }
+                    this.reconRunning = false;
                 },
 
                 showComparisonHeatmap() {
                     const heatmap = this.reconImages.find(i => i.name.includes('comparison') || i.name.includes('heatmap'));
-                    if (heatmap) {
-                        this.openImageModal(heatmap.url);
-                    }
+                    if (heatmap) this.openImageModal(heatmap.url);
                 },
 
                 openImageModal(url) {
@@ -1235,85 +1458,55 @@
                 },
 
                 async deleteTrialData() {
-                    if (!confirm(`Delete all data for trial ${this.reconTrial}? This will remove:\n- Trial simulation data\n- Reconstruction results\n- All images and logs\n\nThis cannot be undone.`)) {
-                        return;
-                    }
-
+                    if (!confirm(`delete all data for trial ${this.reconTrial}?`)) return;
                     try {
-                        const response = await fetch(`/api/trial/${this.reconTrial}/data`, {
-                            method: 'DELETE',
-                            credentials: 'include'
-                        });
+                        const response = await this.authFetch(`/api/trial/${this.reconTrial}/data`, { method: 'DELETE' });
                         const data = await response.json();
-
                         if (data.success) {
-                            this.notify('success', `Trial ${this.reconTrial} deleted successfully`);
-                            // Clear current data
+                            this.notify('success', 'trial deleted');
                             this.reconResults = [];
                             this.reconImages = [];
                             this.reconError = null;
-                            // Reload completed trials list
                             await this.loadCompletedTrials();
-                            // Switch to first available trial or clear
                             if (this.completedTrials.length > 0) {
                                 this.reconTrial = this.completedTrials[0].id;
                                 await this.loadExistingResults();
                             }
                         } else {
-                            // Show detailed error message
-                            let errorMsg = data.message || 'Failed to delete trial';
-                            if (data.errors && data.errors.length > 0) {
-                                // Check if it's a permission error
-                                const permError = data.errors.find(e => e.includes('Permission denied') || e.includes('sudo'));
-                                if (permError) {
-                                    errorMsg = `Permission denied. Run this command in terminal:\n\ncd ~/workspaces/aquatic-mapping/web\n./scripts/cleanup-trials.sh ${this.reconTrial}`;
-                                    alert(errorMsg);
-                                } else {
-                                    errorMsg = data.errors.join('\n');
-                                }
-                            }
-                            this.notify('error', 'Delete failed - see terminal for command');
-
-                            // Reload trials list anyway (might have partially deleted)
-                            await this.loadCompletedTrials();
+                            this.notify('error', 'delete failed');
                         }
                     } catch (e) {
-                        this.notify('error', 'Failed to delete trial data');
-                        console.error('Delete trial error:', e);
+                        this.notify('error', 'failed to delete');
                     }
                 },
 
                 async startHostVNC() {
                     try {
-                        const response = await fetch('/api/host/vnc/start', { method: 'POST' });
+                        const response = await this.authFetch('/api/host/vnc/start', { method: 'POST' });
                         const data = await response.json();
                         if (data.success) {
                             this.hostVncRunning = true;
-                            this.notify('success', 'VNC server started on port 5900');
+                            this.notify('success', 'vnc started');
                         } else {
-                            this.notify('error', data.detail || 'Failed to start VNC');
+                            this.notify('error', 'failed to start vnc');
                         }
-                    } catch (e) { this.notify('error', 'Failed to start VNC'); }
+                    } catch (e) { this.notify('error', 'failed to start vnc'); }
                 },
 
                 async stopHostVNC() {
                     try {
-                        const response = await fetch('/api/host/vnc/stop', { method: 'POST' });
-                        const data = await response.json();
+                        await this.authFetch('/api/host/vnc/stop', { method: 'POST' });
                         this.hostVncRunning = false;
-                        this.notify('success', 'VNC server stopped');
-                    } catch (e) { this.notify('error', 'Failed to stop VNC'); }
+                        this.notify('success', 'vnc stopped');
+                    } catch (e) { this.notify('error', 'failed to stop vnc'); }
                 },
 
                 async checkHostVncStatus() {
                     try {
-                        const response = await fetch('/api/host/vnc/status');
+                        const response = await this.authFetch('/api/host/vnc/status');
                         const data = await response.json();
                         this.hostVncRunning = data.running;
-                        this.hostVncStatus = {
-                            x11vnc: data.x11vnc_running || false,
-                            novnc: data.novnc_running || false
-                        };
+                        this.hostVncStatus = { x11vnc: data.x11vnc_running || false, novnc: data.novnc_running || false };
                     } catch (e) {
                         this.hostVncRunning = false;
                         this.hostVncStatus = { x11vnc: false, novnc: false };
@@ -1323,6 +1516,12 @@
                 notify(type, message) {
                     this.notifications.push({ type, message });
                     setTimeout(() => this.notifications.shift(), 3000);
+                },
+
+                logout() {
+                    sessionStorage.removeItem('auth');
+                    sessionStorage.removeItem('username');
+                    window.location.href = '/login';
                 }
             }
         }

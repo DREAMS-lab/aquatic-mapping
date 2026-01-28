@@ -92,6 +92,10 @@ def run_mchutchon_nigp(field_type, trial_number, kernel, train_x, train_y, train
     save_mchutchon_nigp_results(metrics, hyperparams, field_type, kernel,
                                  trial_number, output_dir)
 
+    # save predictions as numpy arrays for comparison
+    np.save(output_dir / f'{field_type}_{kernel}_predictions.npy', pred_mean_grid)
+    np.save(output_dir / f'{field_type}_{kernel}_variance.npy', pred_variance_grid)
+
     return metrics
 
 
@@ -141,6 +145,10 @@ def run_girard_uncertain_input(field_type, trial_number, kernel, train_x, train_
     # save results
     save_girard_results(metrics, hyperparams, field_type, kernel,
                         trial_number, output_dir)
+
+    # save predictions as numpy arrays for comparison
+    np.save(output_dir / f'{field_type}_{kernel}_predictions.npy', pred_mean_grid)
+    np.save(output_dir / f'{field_type}_{kernel}_variance.npy', pred_variance_grid)
 
     return metrics
 

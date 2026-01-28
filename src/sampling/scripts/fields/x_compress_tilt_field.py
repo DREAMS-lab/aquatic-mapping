@@ -20,7 +20,12 @@ class XCompressTiltFieldGenerator(Node):
         self.base_temperature = 20.0
         self.hotspot_amplitude = 10.0
         self.current_pos = None
-        self.noise_std = 0.6
+
+        # Noise parameter for sensor measurements (configurable)
+        self.declare_parameter('noise_std', 0.6)
+        self.noise_std = self.get_parameter('noise_std').value
+        self.get_logger().info(f"Measurement noise std: {self.noise_std:.3f}°C")
+
         qos_viz = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL)
         qos_px4 = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL, history=QoSHistoryPolicy.KEEP_LAST, depth=1)
         self.marker_pub = self.create_publisher(Marker, '/gaussian_field/x_compress_tilt', qos_viz)
@@ -34,9 +39,10 @@ class XCompressTiltFieldGenerator(Node):
     def generate_field(self):
         sigma_x, sigma_y = 2.5, 7.0
         theta = np.pi / 4.0
-        x = np.arange(0, self.width, self.resolution)
-        y = np.arange(0, self.height, self.resolution)
-        X, Y = np.meshgrid(x, y)
+        # Include far edge for consistency with ground_truth.py
+        self.x_grid = np.arange(0, self.width + 1e-9, self.resolution)
+        self.y_grid = np.arange(0, self.height + 1e-9, self.resolution)
+        X, Y = np.meshgrid(self.x_grid, self.y_grid, indexing='xy')
         X_rot = (X - self.center_x) * np.cos(theta) + (Y - self.center_y) * np.sin(theta)
         Y_rot = -(X - self.center_x) * np.sin(theta) + (Y - self.center_y) * np.cos(theta)
         gaussian = np.exp(-(X_rot**2 / (2 * sigma_x**2) + Y_rot**2 / (2 * sigma_y**2)))
@@ -48,14 +54,13 @@ class XCompressTiltFieldGenerator(Node):
     def sample_field(self, x, y):
         if x < 0 or x > self.width or y < 0 or y > self.height:
             return self.base_temperature
-        x_grid = np.arange(0, self.width, self.resolution)
-        y_grid = np.arange(0, self.height, self.resolution)
-        i = np.searchsorted(x_grid, x) - 1
-        j = np.searchsorted(y_grid, y) - 1
-        if i < 0 or i >= len(x_grid)-1 or j < 0 or j >= len(y_grid)-1:
+        # Reuse stored grids and clamp safely
+        i = np.searchsorted(self.x_grid, x) - 1
+        j = np.searchsorted(self.y_grid, y) - 1
+        if i < 0 or i >= len(self.x_grid)-1 or j < 0 or j >= len(self.y_grid)-1:
             return self.base_temperature
-        x0, x1 = x_grid[i], x_grid[i+1]
-        y0, y1 = y_grid[j], y_grid[j+1]
+        x0, x1 = self.x_grid[i], self.x_grid[i+1]
+        y0, y1 = self.y_grid[j], self.y_grid[j+1]
         wx = (x - x0) / (x1 - x0)
         wy = (y - y0) / (y1 - y0)
         temp = (1-wx)*(1-wy)*self.temperature_field[j,i] + wx*(1-wy)*self.temperature_field[j,i+1] + (1-wx)*wy*self.temperature_field[j+1,i] + wx*wy*self.temperature_field[j+1,i+1]

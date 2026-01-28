@@ -14,21 +14,27 @@ venv/
 env/
 *.egg
 
-# Data files
+# Data files (large binaries)
 *.bag
 *.mcap
-*.csv
 *.npz
 *.npy
-data/
-results/
-*.png
-*.jpg
-*.jpeg
+
+# Results data (keep code, ignore outputs)
+reconstruction/results/
+src/sampling/data/
+src/info_gain/data/
 
 # Archive and temporary
 archive/
 infra/
+
+# Papers and PDFs
+papers/
+*.pdf
+
+# Preliminary analysis
+preliminary_analysis/
 
 # IDE
 .vscode/
@@ -40,3 +46,7 @@ infra/
 # OS
 .DS_Store
 Thumbs.db
+
+# Token files
+*.token
+token.txt

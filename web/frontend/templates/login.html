@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control Room Login - The Chronicle</title>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500;1,600;1,700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --paper: #f4ead5;
+            --paper-cream: #faf6eb;
+            --paper-aged: #e8dcc4;
+            --paper-dark: #d9ccb4;
+            --ink: #1a1a1a;
+            --ink-light: #3d3d3d;
+            --ink-faded: #6a6a6a;
+            --olive: #4a5d23;
+            --orange: #c4640c;
+            --aqua: #2a6a6a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'EB Garamond', Georgia, serif;
+            background: var(--paper);
+            color: var(--ink);
+            font-size: 16px;
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Paper texture */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .login-container {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            max-width: 400px;
+            padding: 40px;
+            background: var(--paper-cream);
+            border: 3px solid var(--ink);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .login-title {
+            font-family: 'Playfair Display', serif;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            color: var(--ink);
+        }
+
+        .login-subtitle {
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--ink-faded);
+        }
+
+        .login-divider {
+            height: 2px;
+            background: var(--olive);
+            margin: 20px 0;
+            opacity: 0.3;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--ink-faded);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 14px;
+            font-family: 'EB Garamond', serif;
+            font-size: 15px;
+            background: var(--paper);
+            border: 2px solid var(--ink-faded);
+            color: var(--ink);
+            transition: all 0.2s;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--olive);
+            background: var(--paper-aged);
+        }
+
+        .form-input::placeholder {
+            color: var(--ink-faded);
+            opacity: 0.6;
+        }
+
+        .login-button {
+            width: 100%;
+            padding: 12px 16px;
+            margin-top: 10px;
+            font-family: 'EB Garamond', serif;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: var(--olive);
+            color: var(--paper-cream);
+            border: 2px solid var(--olive);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+
+        .login-button:hover {
+            background: var(--olive-dark);
+            border-color: var(--olive-dark);
+        }
+
+        .login-button:active {
+            transform: scale(0.98);
+        }
+
+        .login-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            display: none;
+            padding: 12px 14px;
+            margin-bottom: 15px;
+            background: #f8d7da;
+            border: 2px solid #c4640c;
+            color: #721c24;
+            font-size: 13px;
+            border-radius: 0;
+            animation: slideDown 0.3s ease;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .login-footer {
+            text-align: center;
+            margin-top: 25px;
+            font-size: 12px;
+            color: var(--ink-faded);
+            border-top: 1px dashed var(--ink-faded);
+            padding-top: 15px;
+        }
+
+        .loading .login-button::after {
+            content: ' ⏳';
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                margin: 20px;
+                max-width: 100%;
+            }
+
+            .login-title {
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <div class="login-title">Control Room</div>
+            <div class="login-subtitle">Field Reconstruction System</div>
+        </div>
+
+        <div class="login-divider"></div>
+
+        <form id="loginForm" onsubmit="handleLogin(event)">
+            <div class="error-message" id="errorMessage"></div>
+
+            <div class="form-group">
+                <label class="form-label">Username</label>
+                <input
+                    type="text"
+                    id="username"
+                    class="form-input"
+                    placeholder="Enter your username"
+                    required
+                    autocomplete="username"
+                >
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <input
+                    type="password"
+                    id="password"
+                    class="form-input"
+                    placeholder="Enter your password"
+                    required
+                    autocomplete="current-password"
+                >
+            </div>
+
+            <button type="submit" class="login-button" id="submitBtn">Sign In</button>
+        </form>
+
+        <div class="login-footer">
+            <p>Aquatic Mapping Control Panel</p>
+            <p style="margin-top: 8px; opacity: 0.7;">Trial Management & GP Reconstruction</p>
+        </div>
+    </div>
+
+    <script>
+        function showError(message) {
+            const errorEl = document.getElementById('errorMessage');
+            errorEl.textContent = message;
+            errorEl.classList.add('show');
+            setTimeout(() => {
+                errorEl.classList.remove('show');
+            }, 4000);
+        }
+
+        async function handleLogin(event) {
+            event.preventDefault();
+
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const submitBtn = document.getElementById('submitBtn');
+            const form = document.getElementById('loginForm');
+
+            submitBtn.disabled = true;
+            form.classList.add('loading');
+
+            try {
+                // Validate credentials via API
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Store credentials for dashboard to use
+                    sessionStorage.setItem('auth', btoa(username + ':' + password));
+                    sessionStorage.setItem('username', username);
+                    // Redirect to dashboard
+                    window.location.href = '/dashboard';
+                } else {
+                    showError(data.detail || 'Invalid credentials');
+                    submitBtn.disabled = false;
+                    form.classList.remove('loading');
+                }
+            } catch (error) {
+                showError('Connection error. Host PC may be offline.');
+                submitBtn.disabled = false;
+                form.classList.remove('loading');
+            }
+        }
+
+        // Check if already authenticated
+        if (sessionStorage.getItem('auth')) {
+            window.location.href = '/dashboard';
+        }
+
+        // Auto-focus username field
+        document.getElementById('username').focus();
+    </script>
+</body>
+</html>

@@ -181,5 +181,5 @@ with open(metrics_path, 'w') as f:
 
 print(f"✓ Detailed metrics saved to: {metrics_path}\n")
 
-# Show the plot
-plt.show()
+# Close the plot without displaying
+plt.close()
