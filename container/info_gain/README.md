@@ -221,6 +221,131 @@ To compare exact vs pose-aware performance:
 
 **Expected result:** Under real position noise, pose-aware planner should achieve better reconstruction by planning for uncertainty.
 
-## Docker Container
+## Docker Container - Orchestrated Trials
 
-For containerized experiments with noVNC, see `../../infra/docker/`
+### Prerequisites
+
+1. Build the Docker image (one time):
+```bash
+cd infra/docker
+docker build -t aquatic-sim .
+```
+
+2. Verify NVIDIA Docker runtime:
+```bash
+docker run --gpus all nvidia/cuda:12.4.0-base-ubuntu24.04 nvidia-smi
+```
+
+### Running Synchronized Trials
+
+The orchestrator runs **exact** and **pose_aware** planners simultaneously, synchronized field-by-field:
+
+```bash
+# Run 10 trials for all 5 fields (both planners)
+python3 container/info_gain/orchestrator.py --trials 10
+
+# Run specific fields only
+python3 container/info_gain/orchestrator.py --trials 5 --fields radial,x_compress
+
+# Skip certain fields
+python3 container/info_gain/orchestrator.py --trials 10 --skip-fields y_compress_tilt
+```
+
+**How it works:**
+1. For each trial (1..N):
+2. For each field (radial, x_compress, ...):
+   - Starts **exact** container for this field
+   - Starts **pose_aware** container for this field (in parallel)
+   - Waits for BOTH to complete (detects `summary.json`)
+   - Stops both containers
+   - Moves to next field
+3. After all fields complete, moves to next trial
+
+### Monitoring Progress
+
+**Terminal dashboard (live updates):**
+```bash
+python3 container/info_gain/monitor.py --watch
+```
+
+**One-time status check:**
+```bash
+python3 container/info_gain/monitor.py
+```
+
+**View container logs:**
+```bash
+docker logs -f exact_field
+docker logs -f pose_aware_field
+```
+
+### Output Structure
+
+Results with compute metrics:
+```
+src/info_gain/data/trials/
+├── orchestrator_status.json     # Real-time status
+├── orchestrator.log             # Full log
+├── exact/
+│   └── radial/
+│       └── trial_001/
+│           ├── summary.json          # Mission results
+│           ├── samples.csv           # Collected samples
+│           ├── config.json           # Configuration
+│           ├── compute_metrics.csv   # CPU/GPU/RAM time series (1s interval)
+│           ├── compute_summary.json  # Aggregated compute stats
+│           ├── planner.log           # ROS2 planner output
+│           ├── px4.log               # PX4/Gazebo output
+│           ├── dds.log               # DDS agent output
+│           └── build.log             # Workspace build output
+└── pose_aware/
+    └── ...
+```
+
+### Compute Metrics Logged
+
+Per-second metrics in `compute_metrics.csv`:
+- `timestamp`: Unix timestamp
+- `cpu_percent`: CPU usage (%)
+- `ram_used_mb`, `ram_total_mb`: Memory usage
+- `gpu_util`: GPU utilization (%)
+- `gpu_mem_used_mb`, `gpu_mem_total_mb`: GPU memory
+- `gpu_temp`: GPU temperature (°C)
+
+Aggregated in `compute_summary.json`:
+```json
+{
+  "cpu_mean": 45.2,
+  "cpu_max": 89.1,
+  "ram_mean_mb": 4200,
+  "ram_max_mb": 5800,
+  "gpu_util_mean": 67.3,
+  "gpu_util_max": 95.0,
+  "gpu_mem_max_mb": 3200,
+  "gpu_temp_max": 72
+}
+```
+
+### Volume Mounts (No Rebuild Needed)
+
+The orchestrator mounts your local workspace into the container:
+- Code changes are picked up automatically
+- `colcon build` runs at container startup (incremental, fast)
+- Results are written directly to your local filesystem
+
+### Troubleshooting
+
+**Rovers don't move:**
+- Check `planner.log` for errors
+- Common issue: Package not found (build failed)
+- Verify DDS bridge with `ros2 topic list` inside container
+
+**Container fails to start:**
+- Check `docker logs exact_field` or `docker logs pose_aware_field`
+- Verify GPU access: `docker run --gpus all nvidia/cuda:12.4.0-base-ubuntu24.04 nvidia-smi`
+
+**Timeout (>1 hour per field):**
+- Check if simulation is stuck (PX4/Gazebo issues)
+- Reduce `CONTAINER_TIMEOUT` in orchestrator.py if needed
+
+For manual experiments without Docker, see the manual scripts above.

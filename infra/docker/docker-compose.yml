@@ -1,0 +1,232 @@
+# Docker Compose for Aquatic Mapping Simulations
+#
+# Usage:
+#   Single simulation:
+#     docker compose up sim1
+#
+#   Multiple simulations:
+#     docker compose up sim1 sim2 sim3
+#
+#   Scale (all same config):
+#     docker compose up --scale sim=5
+#
+#   Custom trial:
+#     TRIAL_ID=5 FIELD_TYPE=x_compress docker compose up sim1
+
+version: "3.8"
+
+# Common configuration anchor
+x-sim-common: &sim-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: aquatic-sim:latest
+  privileged: false
+  # Resource limits
+  deploy:
+    resources:
+      limits:
+        cpus: "2.0"
+        memory: 4G
+      reservations:
+        cpus: "1.0"
+        memory: 2G
+  # Shared volume for data output
+  volumes:
+    - simulation-data:/home/simuser/aquatic-mapping/src/sampling/data/missions
+    - /tmp/.X11-unix:/tmp/.X11-unix:rw
+  # Restart policy
+  restart: "no"
+  # Network mode
+  networks:
+    - simnet
+
+services:
+  # ============================================================================
+  # Individual simulation containers with unique ports and domain IDs
+  # ============================================================================
+
+  sim1:
+    <<: *sim-common
+    container_name: aquatic-sim-1
+    environment:
+      - TRIAL_ID=1
+      - FIELD_TYPE=${FIELD_TYPE:-radial}
+      - ROS_DOMAIN_ID=1
+      - HEADLESS=1
+      - VNC_PORT=5901
+      - NOVNC_PORT=6081
+      - PX4_MODEL=${PX4_MODEL:-gz_r1_rover}
+    ports:
+      - "5901:5901"   # VNC
+      - "6081:6081"   # noVNC web
+      - "14541:14540" # PX4 MAVLINK
+
+  sim2:
+    <<: *sim-common
+    container_name: aquatic-sim-2
+    environment:
+      - TRIAL_ID=2
+      - FIELD_TYPE=${FIELD_TYPE:-radial}
+      - ROS_DOMAIN_ID=2
+      - HEADLESS=1
+      - VNC_PORT=5902
+      - NOVNC_PORT=6082
+      - PX4_MODEL=${PX4_MODEL:-gz_r1_rover}
+    ports:
+      - "5902:5902"
+      - "6082:6082"
+      - "14542:14540"
+
+  sim3:
+    <<: *sim-common
+    container_name: aquatic-sim-3
+    environment:
+      - TRIAL_ID=3
+      - FIELD_TYPE=${FIELD_TYPE:-radial}
+      - ROS_DOMAIN_ID=3
+      - HEADLESS=1
+      - VNC_PORT=5903
+      - NOVNC_PORT=6083
+      - PX4_MODEL=${PX4_MODEL:-gz_r1_rover}
+    ports:
+      - "5903:5903"
+      - "6083:6083"
+      - "14543:14540"
+
+  sim4:
+    <<: *sim-common
+    container_name: aquatic-sim-4
+    environment:
+      - TRIAL_ID=4
+      - FIELD_TYPE=${FIELD_TYPE:-radial}
+      - ROS_DOMAIN_ID=4
+      - HEADLESS=1
+      - VNC_PORT=5904
+      - NOVNC_PORT=6084
+      - PX4_MODEL=${PX4_MODEL:-gz_r1_rover}
+    ports:
+      - "5904:5904"
+      - "6084:6084"
+      - "14544:14540"
+
+  sim5:
+    <<: *sim-common
+    container_name: aquatic-sim-5
+    environment:
+      - TRIAL_ID=5
+      - FIELD_TYPE=${FIELD_TYPE:-radial}
+      - ROS_DOMAIN_ID=5
+      - HEADLESS=1
+      - VNC_PORT=5905
+      - NOVNC_PORT=6085
+      - PX4_MODEL=${PX4_MODEL:-gz_r1_rover}
+    ports:
+      - "5905:5905"
+      - "6085:6085"
+      - "14545:14540"
+
+  sim6:
+    <<: *sim-common
+    container_name: aquatic-sim-6
+    environment:
+      - TRIAL_ID=6
+      - FIELD_TYPE=${FIELD_TYPE:-radial}
+      - ROS_DOMAIN_ID=6
+      - HEADLESS=1
+      - VNC_PORT=5906
+      - NOVNC_PORT=6086
+      - PX4_MODEL=${PX4_MODEL:-gz_r1_rover}
+    ports:
+      - "5906:5906"
+      - "6086:6086"
+      - "14546:14540"
+
+  sim7:
+    <<: *sim-common
+    container_name: aquatic-sim-7
+    environment:
+      - TRIAL_ID=7
+      - FIELD_TYPE=${FIELD_TYPE:-radial}
+      - ROS_DOMAIN_ID=7
+      - HEADLESS=1
+      - VNC_PORT=5907
+      - NOVNC_PORT=6087
+      - PX4_MODEL=${PX4_MODEL:-gz_r1_rover}
+    ports:
+      - "5907:5907"
+      - "6087:6087"
+      - "14547:14540"
+
+  sim8:
+    <<: *sim-common
+    container_name: aquatic-sim-8
+    environment:
+      - TRIAL_ID=8
+      - FIELD_TYPE=${FIELD_TYPE:-radial}
+      - ROS_DOMAIN_ID=8
+      - HEADLESS=1
+      - VNC_PORT=5908
+      - NOVNC_PORT=6088
+      - PX4_MODEL=${PX4_MODEL:-gz_r1_rover}
+    ports:
+      - "5908:5908"
+      - "6088:6088"
+      - "14548:14540"
+
+  sim9:
+    <<: *sim-common
+    container_name: aquatic-sim-9
+    environment:
+      - TRIAL_ID=9
+      - FIELD_TYPE=${FIELD_TYPE:-radial}
+      - ROS_DOMAIN_ID=9
+      - HEADLESS=1
+      - VNC_PORT=5909
+      - NOVNC_PORT=6089
+      - PX4_MODEL=${PX4_MODEL:-gz_r1_rover}
+    ports:
+      - "5909:5909"
+      - "6089:6089"
+      - "14549:14540"
+
+  sim10:
+    <<: *sim-common
+    container_name: aquatic-sim-10
+    environment:
+      - TRIAL_ID=10
+      - FIELD_TYPE=${FIELD_TYPE:-radial}
+      - ROS_DOMAIN_ID=10
+      - HEADLESS=1
+      - VNC_PORT=5910
+      - NOVNC_PORT=6090
+      - PX4_MODEL=${PX4_MODEL:-gz_r1_rover}
+    ports:
+      - "5910:5910"
+      - "6090:6090"
+      - "14550:14540"
+
+# ============================================================================
+# Networks
+# ============================================================================
+
+networks:
+  simnet:
+    driver: bridge
+
+# ============================================================================
+# Volumes
+# ============================================================================
+
+# NOTE: Before running docker-compose, set DATA_DIR to your host data directory:
+#   export DATA_DIR=$HOME/workspaces/aquatic-mapping/src/sampling/data/missions
+#   docker compose up sim1
+# Or use the run-trial.sh script which handles this automatically.
+
+volumes:
+  simulation-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:?ERROR: DATA_DIR must be set to your missions data directory}

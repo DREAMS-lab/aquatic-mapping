@@ -19,6 +19,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from utils.ground_truth import generate_ground_truth_field
 
+SCRIPT_DIR = Path(__file__).parent.absolute()
+WORKSPACE_ROOT = SCRIPT_DIR.parent
+RESULTS_DIR = WORKSPACE_ROOT / "data" / "reconstruction"
 
 FIELDS = ['radial', 'x_compress', 'y_compress', 'x_compress_tilt', 'y_compress_tilt']
 KERNELS = ['rbf', 'exponential', 'matern15', 'matern25']
@@ -118,7 +121,7 @@ def main():
     if len(sys.argv) < 2:
         print(__doc__)
         print("\nAvailable trials:")
-        results_dir = Path(__file__).parent / 'results'
+        results_dir = RESULTS_DIR
         trials = sorted([d.name for d in results_dir.iterdir() if d.is_dir() and d.name.startswith('trial_')])
         for t in trials:
             print(f"  {t}")

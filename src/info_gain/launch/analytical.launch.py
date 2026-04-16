@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Pose-Aware Planner Launch File
+Analytical Closed-Form Planner Launch File
 
-Launches everything needed for pose-aware planning experiment (position uncertainty):
+Launches everything needed for analytical planning experiment (closed-form expected info):
   - Rover infrastructure (TF, rover_monitor, robot_state_publisher)
   - Selected field generator ONLY
   - RViz with field-specific config
-  - Pose-aware planner node (expected info under position noise)
+  - Analytical planner node (closed-form expected variance - Girard/Dallaire)
 
 Usage:
-  ros2 launch info_gain pose_aware.launch.py field_type:=radial
-  ros2 launch info_gain pose_aware.launch.py field_type:=radial trial:=1 position_std:=0.5
+  ros2 launch info_gain analytical.launch.py field_type:=radial
+  ros2 launch info_gain analytical.launch.py field_type:=radial trial:=1 position_std:=0.5
 
 Available field types: radial, x_compress, y_compress, x_compress_tilt, y_compress_tilt
 """
@@ -80,18 +80,6 @@ def generate_launch_description():
         description='Position uncertainty std deviation (meters)'
     )
 
-    n_mc_samples_arg = DeclareLaunchArgument(
-        'n_mc_samples',
-        default_value='30',
-        description='Monte Carlo samples for expected info gain'
-    )
-
-    uncertainty_scale_arg = DeclareLaunchArgument(
-        'uncertainty_scale',
-        default_value='1.0',
-        description='Multiply EKF covariance by this factor (1=real, 25=σ≈0.5m, 100=σ≈1.1m)'
-    )
-
     # Get launch configurations
     field_type = LaunchConfiguration('field_type')
     trial = LaunchConfiguration('trial')
@@ -100,8 +88,6 @@ def generate_launch_description():
     lengthscale = LaunchConfiguration('lengthscale')
     candidate_resolution = LaunchConfiguration('candidate_resolution')
     position_std = LaunchConfiguration('position_std')
-    n_mc_samples = LaunchConfiguration('n_mc_samples')
-    uncertainty_scale = LaunchConfiguration('uncertainty_scale')
 
     return LaunchDescription([
         # ========== LAUNCH ARGUMENTS ==========
@@ -112,8 +98,6 @@ def generate_launch_description():
         lengthscale_arg,
         candidate_resolution_arg,
         position_std_arg,
-        n_mc_samples_arg,
-        uncertainty_scale_arg,
 
         # ========== ROVER INFRASTRUCTURE ==========
 
@@ -248,15 +232,15 @@ def generate_launch_description():
             ],
         ),
 
-        # ========== POSE-AWARE PLANNER ==========
+        # ========== ANALYTICAL CLOSED-FORM PLANNER ==========
 
         TimerAction(
             period=5.0,  # Wait for infrastructure
             actions=[
                 Node(
                     package='info_gain',
-                    executable='pose_aware_planner.py',
-                    name='pose_aware_planner',
+                    executable='analytical_planner.py',
+                    name='analytical_planner',
                     output='screen',
                     emulate_tty=True,
                     parameters=[{
@@ -267,8 +251,6 @@ def generate_launch_description():
                         'lambda_cost': lambda_cost,
                         'candidate_resolution': candidate_resolution,
                         'position_std': position_std,
-                        'n_mc_samples': n_mc_samples,
-                        'uncertainty_scale': uncertainty_scale,
                     }]
                 )
             ],

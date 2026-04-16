@@ -1,39 +1,54 @@
 #!/usr/bin/env python3
 """
-Position-Aware Informative Path Planner - Planner Accounts for Pose Uncertainty
+Analytical Closed-Form Position-Aware Planner
 
-Mathematical formulation (planner-aware, GP uses exact inputs):
+Mathematical Foundation (Girard 2003, Dallaire et al.):
+========================================================
 
-Step 1 — Field prior:
-    f(·) ~ GP(0, k)
+Standard GP prediction at certain x*:
+    μ(x*) = k(x*, X)ᵀ K⁻¹ y
+    σ²(x*) = k(x*, x*) - k(x*, X)ᵀ K⁻¹ k(X, x*)
 
-Step 2 — Commanded vs actual location:
-    x̃_t = x_t + ξ_t,  ξ_t ~ N(0, Σ_x)
-    You command x_t, but actually sample at x̃_t
+Expected GP prediction at uncertain x̃ ~ N(μ, Σ):
+    E[μ(x̃)] = E[k(x̃, X)]ᵀ K⁻¹ y
+    E[σ²(x̃)] = E[k(x̃, x̃)] - E[k(x̃, X)]ᵀ K⁻¹ E[k(X, x̃)]
 
-Step 3 — Measurement model:
-    y_t = f(x̃_t) + ε_t,  ε_t ~ N(0, σ_n²)
+Expected RBF Kernel (Girard eq. 10-12, Dallaire eq. 7):
+=======================================================
+For x̃ ~ N(μ_x, Σ_x) and training point x_i:
 
-Step 4 — GP posterior (standard GP, exact inputs):
-    f(x) | D_t ~ N(μ_t(x), σ²_t(x))
+    E[k(x̃, x_i)] = (σ_f² / √|I + Λ⁻¹Σ_x|) × exp(-½(μ_x - x_i)ᵀ(Λ + Σ_x)⁻¹(μ_x - x_i))
 
-Step 5 — Expected information gain under pose noise:
-    U_t(x) = E_{x̃ ~ N(x, Σ_x)} [(1/2) * log(1 + σ²_t(x̃) / σ_n²)]
+where:
+    Λ = diag(ℓ², ℓ²)  (lengthscale matrix)
+    σ_f² = signal variance (=1.0 for our normalized kernel)
 
-Monte Carlo approximation:
-    U_t(x) ≈ (1/M) Σ_{j=1}^M (1/2) * log(1 + σ²_t(x + ξ_j) / σ_n²)
+Expected self-kernel:
+    E[k(x̃, x̃)] = σ_f² = 1.0
 
-Step 6 — Path objective:
-    psi* = argmax_psi  SUM_{t=1}^T U_{t-1}(x_t) - λ * SUM_{t=0}^{T-1} c(x_t, x_{t+1})
+Expected Information Gain (Analytical):
+========================================
+    U(x) ≈ ½ log(1 + E[σ²(x̃)]/σ_n²)
 
-Key: GP model unchanged (exact inputs), planner acquisition is robust to pose error.
+This is an APPROXIMATION of the MC pose-aware planner, not exact:
+
+Approximation 1 — Jensen's inequality:
+    ½ log(1 + E[σ²]/σ_n²)  ≥  E[½ log(1 + σ²/σ_n²)]
+    The log is outside the expectation, always overestimating.
+
+Approximation 2 — E[k]ᵀK⁻¹E[k] vs E[kᵀK⁻¹k]:
+    Uses E[k(x̃,xᵢ)]·E[k(x̃,xⱼ)] instead of the correct
+    E[k(x̃,xᵢ)·k(x̃,xⱼ)] (Girard 2003, Eq. 12 cross-kernel term).
+
+Both approximations are small when σ_x/ℓ ≪ 1 (≈0.25 for our params).
+Faster than MC (no sampling) and deterministic.
 """
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint, VehicleCommand, VehicleOdometry
-from std_msgs.msg import Float32, Float32MultiArray
+from std_msgs.msg import Float32
 import numpy as np
 import torch
 import time
@@ -42,12 +57,11 @@ import json
 from datetime import datetime
 from pathlib import Path
 import matplotlib
-matplotlib.use('Agg')  # Use Agg backend - file only, no display blocking
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from scipy.spatial import ConvexHull
 
-# Add info_gain module to path
 import sys
 script_dir = Path(__file__).parent
 install_path = script_dir.parent / 'python3' / 'dist-packages'
@@ -63,165 +77,248 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def generate_ground_truth_field(field_type, width=25.0, height=25.0, resolution=0.5):
-    """Generate ground truth temperature field (same as field generators)"""
+    """Generate ground truth temperature field"""
     x_grid = np.arange(0, width + 1e-9, resolution)
     y_grid = np.arange(0, height + 1e-9, resolution)
     X, Y = np.meshgrid(x_grid, y_grid, indexing='xy')
 
     center_x, center_y = width / 2, height / 2
     base_temperature = 20.0
-    hotspot_amplitude = 10.0  # Matches ROS2 field generators
+    hotspot_amplitude = 10.0
 
     if field_type == 'radial':
         sigma = 5.0
         gaussian = np.exp(-((X - center_x)**2 + (Y - center_y)**2) / (2 * sigma**2))
         field = base_temperature + (hotspot_amplitude * gaussian)
-
     elif field_type == 'x_compress':
-        sigma_x, sigma_y = 2.5, 7.0  # Matches ROS2 field generators
+        sigma_x, sigma_y = 2.5, 7.0
         gaussian = np.exp(-((X - center_x)**2 / (2 * sigma_x**2) + (Y - center_y)**2 / (2 * sigma_y**2)))
         field = base_temperature + (hotspot_amplitude * gaussian)
-
     elif field_type == 'y_compress':
-        sigma_x, sigma_y = 7.0, 2.5  # Matches ROS2 field generators
+        sigma_x, sigma_y = 7.0, 2.5
         gaussian = np.exp(-((X - center_x)**2 / (2 * sigma_x**2) + (Y - center_y)**2 / (2 * sigma_y**2)))
         field = base_temperature + (hotspot_amplitude * gaussian)
-
     elif field_type == 'x_compress_tilt':
-        sigma_x, sigma_y = 2.5, 7.0  # Matches ROS2 field generators
-        angle = np.pi / 4  # 45 degrees, matches ROS2 field generators
+        sigma_x, sigma_y = 2.5, 7.0
+        angle = np.pi / 4
         X_rot = (X - center_x) * np.cos(angle) + (Y - center_y) * np.sin(angle)
         Y_rot = -(X - center_x) * np.sin(angle) + (Y - center_y) * np.cos(angle)
         gaussian = np.exp(-(X_rot**2 / (2 * sigma_x**2) + Y_rot**2 / (2 * sigma_y**2)))
         field = base_temperature + (hotspot_amplitude * gaussian)
-
     elif field_type == 'y_compress_tilt':
-        sigma_x, sigma_y = 7.0, 2.5  # Matches ROS2 field generators
-        angle = np.pi / 4  # 45 degrees, matches ROS2 field generators
+        sigma_x, sigma_y = 7.0, 2.5
+        angle = np.pi / 4
         X_rot = (X - center_x) * np.cos(angle) + (Y - center_y) * np.sin(angle)
         Y_rot = -(X - center_x) * np.sin(angle) + (Y - center_y) * np.cos(angle)
         gaussian = np.exp(-(X_rot**2 / (2 * sigma_x**2) + Y_rot**2 / (2 * sigma_y**2)))
         field = base_temperature + (hotspot_amplitude * gaussian)
-
     else:
         raise ValueError(f"Unknown field type: {field_type}")
 
     return X, Y, field
 
 
-def information_gain(variance, noise_var):
+def expected_rbf_kernel_vectorized(mu_x, Sigma_x, train_x, lengthscale, signal_var=1.0):
     """
-    Information gain (mutual information) from sampling at a location.
+    Vectorized computation of expected RBF kernel E[k(x̃, X)] for uncertain input.
 
-    Mathematical formulation:
-    -------------------------
-    Δ(x | S) = I(f(x); y | D_S)
-             = H[f(x) | D_S] - H[f(x) | D_S, y]
-             = (1/2) * log(1 + σ²_S(x) / σ_n²)
+    Mathematical Formulation (Girard 2003, Equation 10-12):
+    ========================================================
+    For x̃ ~ N(μ, Σ) and training points X = {x_1, ..., x_N}:
+
+        E[k(x̃, x_i)] = ∫ k(x̃, x_i) p(x̃) dx̃
+                      = ∫ σ_f² exp(-½||x̃ - x_i||²/ℓ²) × (1/√|2πΣ|) exp(-½(x̃-μ)ᵀΣ⁻¹(x̃-μ)) dx̃
+
+    Product of two Gaussians = another Gaussian:
+
+        E[k(x̃, x_i)] = (σ_f² / √|I + Λ⁻¹Σ|) × exp(-½(μ - x_i)ᵀ(Λ + Σ)⁻¹(μ - x_i))
 
     where:
-        - σ²_S(x) = GP posterior variance at x given data S
-        - σ_n²    = observation noise variance
-        - The formula comes from differential entropy of Gaussians
-
-    Intuition: High variance → high info gain (we learn more by sampling there)
+        Λ = diag(ℓ², ℓ²)  (squared lengthscale matrix)
+        Σ = position covariance (2×2)
 
     Args:
-        variance: σ²_S(x), GP posterior variance at candidate location(s)
-        noise_var: σ_n², observation noise variance
+        mu_x: Mean position (N_query, 2) or (2,)
+        Sigma_x: Position covariance (2, 2) - assumed same for all queries
+        train_x: Training locations (N_train, 2)
+        lengthscale: GP lengthscale ℓ
+        signal_var: σ_f² (default 1.0)
 
     Returns:
-        Information gain in nats (natural log units)
+        E[k(x̃, X)]: Expected kernel matrix (N_query, N_train)
     """
-    if isinstance(variance, torch.Tensor):
-        return 0.5 * torch.log(1 + variance / noise_var)
-    else:
-        return 0.5 * np.log(1 + variance / noise_var)
+    if mu_x.ndim == 1:
+        mu_x = mu_x.reshape(1, -1)
+
+    N_query = mu_x.shape[0]
+    N_train = train_x.shape[0]
+
+    # Λ = diag(ℓ², ℓ²)
+    Lambda = np.eye(2) * (lengthscale ** 2)
+
+    # A = Λ + Σ (common for all pairs)
+    A = Lambda + Sigma_x
+    A_inv = np.linalg.inv(A)
+
+    # Normalization: 1 / √|I + Λ⁻¹Σ|
+    Lambda_inv = np.eye(2) / (lengthscale ** 2)
+    det_term = np.linalg.det(np.eye(2) + Lambda_inv @ Sigma_x)
+    norm = 1.0 / np.sqrt(det_term)
+
+    # Compute all pairwise expected kernels
+    # E[k(x̃_i, x_j)] for all i,j
+    expected_k = np.zeros((N_query, N_train))
+
+    for i in range(N_query):
+        for j in range(N_train):
+            # Δ = μ - x_train
+            delta = mu_x[i] - train_x[j]
+
+            # Mahalanobis: (μ - x_i)ᵀ(Λ + Σ)⁻¹(μ - x_i)
+            mahalanobis = delta @ A_inv @ delta
+
+            # E[k(x̃, x_i)] = (σ_f² / √|I + Λ⁻¹Σ|) × exp(-½ Mahalanobis)
+            expected_k[i, j] = signal_var * norm * np.exp(-0.5 * mahalanobis)
+
+    return expected_k
 
 
-def expected_information_gain_vectorized(candidates, gp, noise_var, position_cov, n_mc_samples=30):
+def expected_posterior_variance_vectorized(mu_x, Sigma_x, gp, lengthscale, noise_var, signal_var=1.0):
     """
-    VECTORIZED expected information gain for ALL candidates at once.
+    Analytical expected posterior variance E[σ²(x̃)] for uncertain input.
 
-    Mathematical formulation:
-    -------------------------
-    For each candidate x_i, compute:
-        U(x_i) = E_{x̃ ~ N(x_i, Σ_x)} [Δ(x̃)]
-               ≈ (1/M) Σ_{j=1}^M (1/2) * log(1 + σ²(x_i + ξ_j) / σ_n²)
+    Mathematical Formulation (Girard 2003, Section 3):
+    ==================================================
+    Standard GP variance at certain x*:
+        σ²(x*) = k(x*, x*) - k(x*, X)ᵀ (K + σ_n²I)⁻¹ k(X, x*)
 
-    Vectorized implementation:
-    --------------------------
-    1. Generate ALL noise samples for ALL candidates: (N_candidates × M) × 2
-    2. Add to candidates to get ALL noisy locations
-    3. ONE GP prediction for all noisy locations
-    4. Reshape and average over MC samples
+    Expected GP variance at uncertain x̃ ~ N(μ, Σ):
+        E[σ²(x̃)] = E[k(x̃, x̃)] - E[k(x̃, X)]ᵀ (K + σ_n²I)⁻¹ E[k(X, x̃)]
 
-    This is ~1000x faster than the naive loop implementation!
+    where:
+        E[k(x̃, x̃)] = σ_f² = 1.0  (expected self-kernel is just signal variance)
+        E[k(x̃, X)] = computed via expected_rbf_kernel_vectorized()
+
+    This is the KEY formula for analytical expected info gain!
 
     Args:
-        candidates: Array of shape (N, 2) - all candidate positions
-        gp: GP model with current observations
-        noise_var: σ_n², observation noise variance
-        position_cov: Σ_x, position covariance matrix (2x2) from PX4 EKF
-        n_mc_samples: M, number of Monte Carlo samples per candidate
+        mu_x: Mean positions (N, 2)
+        Sigma_x: Position covariance (2, 2)
+        gp: GPModel with current training data
+        lengthscale: GP lengthscale
+        noise_var: Observation noise σ_n²
+        signal_var: Signal variance σ_f²
 
     Returns:
-        Array of shape (N,) with expected info gain for each candidate
+        E[σ²(x̃)]: Expected posterior variance (N,)
     """
-    candidates = np.array(candidates)
-    n_candidates = len(candidates)
+    if mu_x.ndim == 1:
+        mu_x = mu_x.reshape(1, -1)
 
-    # Step 1: Generate ALL noise samples at once
-    # Shape: (n_candidates * n_mc_samples, 2)
-    all_noise = np.random.multivariate_normal(
-        np.zeros(2), position_cov, size=n_candidates * n_mc_samples
+    N = mu_x.shape[0]
+
+    # Get training data
+    train_x, _ = gp.get_training_data()
+
+    if train_x is None or len(train_x) == 0:
+        # Prior variance (no training data)
+        return np.full(N, signal_var)
+
+    N_train = train_x.shape[0]
+
+    # 1. Expected self-kernel: E[k(x̃, x̃)] = σ_f²
+    expected_k_self = signal_var
+
+    # 2. Expected cross-kernel: E[k(x̃, X)]  (N, N_train)
+    expected_k_cross = expected_rbf_kernel_vectorized(
+        mu_x, Sigma_x, train_x, lengthscale, signal_var
     )
 
-    # Step 2: Expand candidates and add noise
-    # Each candidate is repeated n_mc_samples times
-    # Shape: (n_candidates * n_mc_samples, 2)
-    candidates_repeated = np.repeat(candidates, n_mc_samples, axis=0)
-    all_noisy_locations = candidates_repeated + all_noise
+    # 3. Kernel matrix K (N_train, N_train)
+    # Use standard RBF kernel for training points (no uncertainty)
+    K = np.zeros((N_train, N_train))
+    for i in range(N_train):
+        for j in range(N_train):
+            r2 = np.sum((train_x[i] - train_x[j])**2)
+            K[i, j] = signal_var * np.exp(-r2 / (2 * lengthscale**2))
 
-    # Step 3: ONE vectorized GP prediction for ALL noisy locations
-    all_noisy_t = torch.tensor(all_noisy_locations, dtype=torch.float32).to(device)
-    with torch.no_grad():
-        _, all_variances = gp.predict(all_noisy_t)
+    # Add noise: K + σ_n² I
+    K_noise = K + noise_var * np.eye(N_train)
 
-    # Step 4: Compute information gain for all
-    all_info_gains = information_gain(all_variances, noise_var)
+    # 4. Inverse: (K + σ_n²I)⁻¹
+    try:
+        K_inv = np.linalg.inv(K_noise)
+    except np.linalg.LinAlgError:
+        # Fallback to pseudo-inverse
+        K_inv = np.linalg.pinv(K_noise)
 
-    # Step 5: Reshape to (n_candidates, n_mc_samples) and average over MC samples
-    all_info_gains = all_info_gains.cpu().numpy().reshape(n_candidates, n_mc_samples)
-    expected_info = np.mean(all_info_gains, axis=1)
+    # 5. Expected posterior variance (vectorized over all queries)
+    # E[σ²(x̃)] = E[k(x̃, x̃)] - E[k(x̃, X)]ᵀ K⁻¹ E[k(X, x̃)]
+    #          = σ_f² - sum_ij E[k(x̃, x_i)] K⁻¹_ij E[k(x̃, x_j)]
+
+    expected_var = np.zeros(N)
+    for i in range(N):
+        # E[k(x̃, X)]ᵀ K⁻¹ E[k(X, x̃)] = E[k(x̃, X)]ᵀ K⁻¹ E[k(x̃, X)]
+        reduction = expected_k_cross[i] @ K_inv @ expected_k_cross[i]
+        expected_var[i] = expected_k_self - reduction
+
+        # Ensure non-negative (numerical stability)
+        expected_var[i] = max(expected_var[i], 1e-10)
+
+    return expected_var
+
+
+def analytical_expected_information_gain(candidates, gp, noise_var, position_cov, lengthscale, signal_var=1.0):
+    """
+    ANALYTICAL expected information gain (CLOSED-FORM, NO MONTE CARLO).
+
+    Mathematical Formulation:
+    =========================
+    U(x) = E[Δ(x̃)] where x̃ ~ N(x, Σ_x)
+         = E[½ log(1 + σ²(x̃)/σ_n²)]
+         ≈ ½ log(1 + E[σ²(x̃)]/σ_n²)   [Jensen's inequality approximation]
+
+    This is an APPROXIMATION of the MC pose-aware planner:
+
+    Approximation 1 — Jensen's inequality:
+        ½ log(1 + E[σ²]/σ_n²)  ≥  E[½ log(1 + σ²/σ_n²)]
+    Approximation 2 — E[k]ᵀK⁻¹E[k] vs E[kᵀK⁻¹k]:
+        Missing Girard (2003) Eq. 12 cross-kernel term.
+
+    Both approximations are small when σ_x/ℓ ≪ 1.
+    Faster than MC (no sampling) and deterministic.
+
+    Args:
+        candidates: (N, 2) array of candidate positions
+        gp: GPModel with current observations
+        noise_var: σ_n²
+        position_cov: Σ_x (2, 2) position uncertainty
+        lengthscale: GP lengthscale ℓ
+        signal_var: GP signal variance σ_f²
+
+    Returns:
+        (N,) array of expected information gains
+    """
+    # Compute expected posterior variance E[σ²(x̃)] analytically
+    expected_var = expected_posterior_variance_vectorized(
+        candidates, position_cov, gp, lengthscale, noise_var, signal_var
+    )
+
+    # Expected information gain: U(x) = ½ log(1 + E[σ²(x̃)]/σ_n²)
+    expected_info = 0.5 * np.log(1 + expected_var / noise_var)
 
     return expected_info
 
 
-def expected_information_gain(x, gp, noise_var, position_cov, n_mc_samples=30):
-    """
-    Expected information gain for a SINGLE candidate (wrapper for compatibility).
-
-    For batch processing, use expected_information_gain_vectorized() instead.
-    """
-    result = expected_information_gain_vectorized(
-        np.array([x]), gp, noise_var, position_cov, n_mc_samples
-    )
-    return float(result[0])
-
-
 def travel_cost(x1, x2):
-    """c(x1, x2) = ||x1 - x2||_2"""
-    if isinstance(x1, torch.Tensor):
-        return torch.norm(x1 - x2)
-    else:
-        return np.linalg.norm(np.array(x1) - np.array(x2))
+    """Euclidean travel cost"""
+    return np.linalg.norm(np.array(x1) - np.array(x2))
 
 
 class LiveVisualizer:
-    """Visualization with live TkAgg window"""
+    """Minimal visualizer for analytical planner"""
 
-    def __init__(self, title="Pose-Aware Sampler", output_dir=None):
+    def __init__(self, title="Analytical Planner", output_dir=None):
         self.fig = plt.figure(figsize=(16, 10))
         self.title = title
         self.output_dir = output_dir
@@ -235,13 +332,11 @@ class LiveVisualizer:
         self.ax_info = self.fig.add_subplot(gs[1, 1])
         self.ax_cost = self.fig.add_subplot(gs[1, 2])
 
-        # Data storage for plots
         self.trajectory = []
         self.info_gains = []
         self.travel_costs = []
         self.steps = []
 
-        # Grid for GP visualization
         self.grid_res = 0.5
         x = np.arange(0, 25 + self.grid_res, self.grid_res)
         y = np.arange(0, 25 + self.grid_res, self.grid_res)
@@ -250,160 +345,117 @@ class LiveVisualizer:
 
     def update(self, gp, candidates, scores, selected_idx, current_pos, target_pos,
                step, info_gain_val, cumulative_cost):
-        """Update all visualization panels"""
-
-        # Store trajectory
+        """Update visualization"""
         self.trajectory.append(current_pos.copy())
         if info_gain_val > 0:
             self.info_gains.append(info_gain_val)
             self.travel_costs.append(cumulative_cost)
             self.steps.append(step)
 
-        # Get GP predictions
         with torch.no_grad():
             grid_t = torch.tensor(self.grid_points, dtype=torch.float32).to(device)
             mean, var = gp.predict(grid_t)
             mean_grid = mean.cpu().numpy().reshape(self.X_grid.shape)
             var_grid = var.cpu().numpy().reshape(self.X_grid.shape)
 
-        # Reshape scores to grid if possible
-        scores_np = scores.cpu().numpy() if isinstance(scores, torch.Tensor) else scores
-
-        # Clear all axes
         for ax in [self.ax_mean, self.ax_var, self.ax_acq, self.ax_traj, self.ax_info, self.ax_cost]:
             ax.clear()
 
-        # 1. GP Mean
-        im1 = self.ax_mean.pcolormesh(self.X_grid, self.Y_grid, mean_grid, cmap='coolwarm', shading='auto')
-        self.ax_mean.set_title('GP Mean (Reconstruction)')
-        self.ax_mean.set_xlabel('X [m]')
-        self.ax_mean.set_ylabel('Y [m]')
-        self.ax_mean.set_aspect('equal')
+        # GP Mean
+        self.ax_mean.pcolormesh(self.X_grid, self.Y_grid, mean_grid, cmap='coolwarm', shading='auto')
+        self.ax_mean.set_title('GP Mean')
         if len(self.trajectory) > 0:
             traj = np.array(self.trajectory)
-            self.ax_mean.plot(traj[:, 0], traj[:, 1], 'k.-', linewidth=1, markersize=4)
-        self.ax_mean.scatter(current_pos[0], current_pos[1], c='lime', s=100, marker='o', edgecolors='black', zorder=10)
+            self.ax_mean.plot(traj[:, 0], traj[:, 1], 'k.-', linewidth=1)
+        self.ax_mean.scatter(current_pos[0], current_pos[1], c='lime', s=100, marker='o', edgecolors='black')
 
-        # 2. GP Variance
-        im2 = self.ax_var.pcolormesh(self.X_grid, self.Y_grid, var_grid, cmap='viridis', shading='auto')
-        self.ax_var.set_title('GP Variance (Uncertainty)')
-        self.ax_var.set_xlabel('X [m]')
-        self.ax_var.set_ylabel('Y [m]')
-        self.ax_var.set_aspect('equal')
-        if len(self.trajectory) > 0:
-            traj = np.array(self.trajectory)
-            self.ax_var.scatter(traj[:, 0], traj[:, 1], c='white', s=20, edgecolors='black', zorder=5)
+        # GP Variance
+        self.ax_var.pcolormesh(self.X_grid, self.Y_grid, var_grid, cmap='viridis', shading='auto')
+        self.ax_var.set_title('GP Variance')
 
-        # 3. Acquisition Function
-        self.ax_acq.scatter(candidates[:, 0], candidates[:, 1], c=scores_np, cmap='hot', s=30, alpha=0.7)
+        # Acquisition
+        self.ax_acq.scatter(candidates[:, 0], candidates[:, 1], c=scores, cmap='hot', s=30, alpha=0.7)
         if selected_idx is not None:
             sel = candidates[selected_idx]
-            self.ax_acq.scatter(sel[0], sel[1], c='cyan', s=200, marker='X', edgecolors='black', linewidths=2, zorder=10)
-            self.ax_acq.annotate(f'Next\n({sel[0]:.1f},{sel[1]:.1f})', (sel[0], sel[1]),
-                                textcoords="offset points", xytext=(10, 10), fontsize=8,
-                                bbox=dict(boxstyle='round', facecolor='cyan', alpha=0.7))
-        self.ax_acq.scatter(current_pos[0], current_pos[1], c='lime', s=100, marker='o', edgecolors='black', zorder=10)
-        self.ax_acq.set_title(f'Acquisition (Step {step})')
-        self.ax_acq.set_xlabel('X [m]')
-        self.ax_acq.set_ylabel('Y [m]')
+            self.ax_acq.scatter(sel[0], sel[1], c='cyan', s=200, marker='X', edgecolors='black', linewidths=2)
+        self.ax_acq.set_title(f'Analytical Acquisition (Step {step})')
         self.ax_acq.set_xlim(0, 25)
         self.ax_acq.set_ylim(0, 25)
-        self.ax_acq.set_aspect('equal')
 
-        # 4. Trajectory with numbers
-        self.ax_traj.set_title('Trajectory')
+        # Trajectory
         if len(self.trajectory) > 0:
             traj = np.array(self.trajectory)
-            self.ax_traj.plot(traj[:, 0], traj[:, 1], 'b-', linewidth=2, alpha=0.7)
+            self.ax_traj.plot(traj[:, 0], traj[:, 1], 'b-', linewidth=2)
             for i, pt in enumerate(traj):
-                self.ax_traj.scatter(pt[0], pt[1], c='blue', s=50, zorder=5)
-                self.ax_traj.annotate(str(i+1), (pt[0], pt[1]), textcoords="offset points",
-                                     xytext=(5, 5), fontsize=7)
-        self.ax_traj.scatter(target_pos[0], target_pos[1], c='red', s=150, marker='X', edgecolors='black', zorder=10, label='Target')
-        self.ax_traj.set_xlabel('X [m]')
-        self.ax_traj.set_ylabel('Y [m]')
+                self.ax_traj.scatter(pt[0], pt[1], c='blue', s=50)
+                self.ax_traj.annotate(str(i+1), (pt[0], pt[1]), xytext=(5, 5), textcoords='offset points')
+        self.ax_traj.scatter(target_pos[0], target_pos[1], c='red', s=150, marker='X', edgecolors='black')
+        self.ax_traj.set_title('Trajectory')
         self.ax_traj.set_xlim(0, 25)
         self.ax_traj.set_ylim(0, 25)
-        self.ax_traj.set_aspect('equal')
         self.ax_traj.grid(True, alpha=0.3)
-        self.ax_traj.legend(loc='upper right')
 
-        # 5. Information Gain over time
+        # Info Gain
         if len(self.info_gains) > 0:
-            self.ax_info.plot(self.steps, self.info_gains, 'g-o', linewidth=2, markersize=4)
+            self.ax_info.plot(self.steps, self.info_gains, 'g-o', linewidth=2)
             self.ax_info.fill_between(self.steps, self.info_gains, alpha=0.3, color='green')
-        self.ax_info.set_title('Information Gain per Step')
+        self.ax_info.set_title('Info Gain (Analytical)')
         self.ax_info.set_xlabel('Step')
-        self.ax_info.set_ylabel('Info Gain (nats)')
-        self.ax_info.grid(True, alpha=0.3)
+        self.ax_info.grid(True)
 
-        # 6. Cumulative Travel Cost
+        # Travel Cost
         if len(self.travel_costs) > 0:
-            self.ax_cost.plot(self.steps, self.travel_costs, 'r-o', linewidth=2, markersize=4)
-            self.ax_cost.fill_between(self.steps, self.travel_costs, alpha=0.3, color='red')
-        self.ax_cost.set_title('Cumulative Travel Cost')
+            self.ax_cost.plot(self.steps, self.travel_costs, 'r-o', linewidth=2)
+        self.ax_cost.set_title('Travel Cost')
         self.ax_cost.set_xlabel('Step')
-        self.ax_cost.set_ylabel('Distance (m)')
-        self.ax_cost.grid(True, alpha=0.3)
+        self.ax_cost.grid(True)
 
-        # Update title with current step
         self.fig.suptitle(f'{self.title} - Sample {step}/100', fontsize=14, fontweight='bold')
 
-        # Save to file (Agg backend)
         if self.output_dir:
             progress_path = self.output_dir / 'figures' / 'progress.png'
             self.fig.savefig(progress_path, dpi=100, bbox_inches='tight')
 
     def save(self, path):
-        """Save current figure"""
         self.fig.savefig(path, dpi=150, bbox_inches='tight')
 
     def close(self):
         plt.close(self.fig)
 
 
-class PoseAwareSampler(Node):
-    """Position-aware informative path planner - expected info under pose noise"""
+class AnalyticalPlanner(Node):
+    """Analytical closed-form position-aware planner"""
 
-    # === HARDCODED PARAMETERS ===
-    MAX_SAMPLES = 100  # Fixed: always stop at 100 samples
+    MAX_SAMPLES = 100
 
     def __init__(self):
-        super().__init__('pose_aware_sampler')
+        super().__init__('analytical_planner')
 
-        # === ROS2 Parameters (configurable) ===
+        # Parameters
         self.declare_parameter('field_type', 'radial')
-        self.declare_parameter('trial', -1)               # Trial number (-1 = auto-increment)
+        self.declare_parameter('trial', -1)
         self.declare_parameter('noise_var', 0.36)
         self.declare_parameter('lengthscale', 2.0)
-        self.declare_parameter('lambda_cost', 0.1)        # Trade-off parameter
+        self.declare_parameter('lambda_cost', 0.1)
         self.declare_parameter('candidate_resolution', 1.0)
-        self.declare_parameter('position_std', 0.5)       # Position uncertainty std (meters)
-        self.declare_parameter('uncertainty_scale', 1.0)  # Multiply EKF covariance by this factor
-        self.declare_parameter('n_mc_samples', 30)        # Monte Carlo samples for expected info
+        self.declare_parameter('position_std', 0.5)
         self.declare_parameter('optimize_every', 10)      # Optimize hyperparams every N obs (0=disabled)
         self.declare_parameter('optimize_steps', 20)      # Gradient steps per optimization
 
-        # Get parameters
         self.field_type = self.get_parameter('field_type').value
         self.trial_num = self.get_parameter('trial').value
         self.noise_var = self.get_parameter('noise_var').value
         self.lengthscale = self.get_parameter('lengthscale').value
         self.lambda_cost = self.get_parameter('lambda_cost').value
         self.candidate_res = self.get_parameter('candidate_resolution').value
-        self.position_std = self.get_parameter('position_std').value  # Fallback if PX4 variance unavailable
-        self.uncertainty_scale = self.get_parameter('uncertainty_scale').value  # Multiply EKF covariance
-        self.n_mc_samples = self.get_parameter('n_mc_samples').value
+        self.position_std = self.get_parameter('position_std').value
         self.optimize_every = self.get_parameter('optimize_every').value
         self.optimize_steps = self.get_parameter('optimize_steps').value
 
-        # Position covariance matrix: Σ_x = diag(σ_x², σ_y²)
-        # Will be updated from PX4 EKF in odometry_callback (with scaling applied)
-        # This is just a fallback initialization
         self.position_cov = np.array([[self.position_std**2, 0],
                                        [0, self.position_std**2]])
 
-        # QoS profile for PX4
+        # QoS
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -415,11 +467,8 @@ class PoseAwareSampler(Node):
         self.offboard_pub = self.create_publisher(OffboardControlMode, '/fmu/in/offboard_control_mode', qos_profile)
         self.setpoint_pub = self.create_publisher(TrajectorySetpoint, '/fmu/in/trajectory_setpoint', qos_profile)
         self.command_pub = self.create_publisher(VehicleCommand, '/fmu/in/vehicle_command', qos_profile)
-
-        # RQT-friendly publishers
         self.info_pub = self.create_publisher(Float32, '/info_gain/current', 10)
         self.cost_pub = self.create_publisher(Float32, '/info_gain/cumulative_cost', 10)
-        self.variance_pub = self.create_publisher(Float32, '/info_gain/mean_variance', 10)
 
         # Subscribers
         self.odom_sub = self.create_subscription(VehicleOdometry, '/fmu/out/vehicle_odometry', self.odometry_callback, qos_profile)
@@ -427,7 +476,7 @@ class PoseAwareSampler(Node):
 
         # State
         self.current_position = np.array([0.0, 0.0, 0.0])
-        self.position_variance = np.array([self.position_std**2, self.position_std**2])  # [σ_x², σ_y²] from PX4 EKF (fallback init)
+        self.position_variance = np.array([self.position_std**2, self.position_std**2])
         self.current_temp = None
         self.counter = 0
         self.state = 'INIT'
@@ -440,7 +489,7 @@ class PoseAwareSampler(Node):
         self.cumulative_info_gain = 0.0
         self.stop_reason = None
 
-        # Initial waypoints: simple 3-point pattern (one short turn)
+        # Initial waypoints
         self.initial_waypoints = [
             np.array([5.0, 5.0, 0.0]),
             np.array([10.0, 5.0, 0.0]),
@@ -452,54 +501,39 @@ class PoseAwareSampler(Node):
         self.gp = GPModel(lengthscale=self.lengthscale, noise_var=self.noise_var,
                           optimize_every=self.optimize_every, optimize_steps=self.optimize_steps)
 
-        # Candidate grid (0.5m buffer from edges)
+        # Candidates
         self.candidates = self._generate_candidate_grid(0.5, 24.5, 0.5, 24.5, self.candidate_res)
 
-        # Output directory
+        # Output
         self.output_dir = self._create_trial_directory()
-
-        # Ground truth field (for evaluation)
-        self.get_logger().info('Generating ground truth field for evaluation...')
         self.gt_X, self.gt_Y, self.gt_field = generate_ground_truth_field(self.field_type)
         self._save_ground_truth()
 
-        # Data logging
         self.samples = []
-        self.decisions = []  # Detailed per-decision log
+        self.decisions = []
         self.samples_file = self.output_dir / 'samples.csv'
         self._init_samples_csv()
 
-        # Visualization
-        self.get_logger().info('Creating live visualizer...')
+        # Viz
         try:
             self.viz = LiveVisualizer(
-                title=f'Pose-Aware - {self.field_type} (MC)',
+                title=f'Analytical - {self.field_type} (CLOSED-FORM)',
                 output_dir=self.output_dir
             )
-            self.get_logger().info('Live visualizer created successfully')
         except Exception as e:
-            self.get_logger().error(f'Failed to create visualizer: {e}')
+            self.get_logger().error(f'Viz failed: {e}')
             self.viz = None
 
-        # Control timer
         self.timer = self.create_timer(0.1, self.control_loop)
-
-        # Save config
         self._save_config()
 
-        self.get_logger().info(f'='*60)
-        self.get_logger().info(f'PLANNER-AWARE Sampler initialized')
-        self.get_logger().info(f'  Method: Expected info U(x) = E[Δ(x̃)] under pose noise')
-        self.get_logger().info(f'  GP: Standard (exact inputs)')
-        self.get_logger().info(f'  Planner: Uses PX4 EKF variance for Monte Carlo')
+        self.get_logger().info('='*60)
+        self.get_logger().info('ANALYTICAL CLOSED-FORM PLANNER')
+        self.get_logger().info('  Method: Girard/Dallaire analytical expected variance')
+        self.get_logger().info('  U(x) ≈ ½ log(1 + E[σ²(x̃)]/σ_n²) - Girard closed-form, no MC')
         self.get_logger().info(f'  Field: {self.field_type}')
         self.get_logger().info(f'  Trial: {self.trial_num}')
-        self.get_logger().info(f'  Lambda: {self.lambda_cost}')
-        self.get_logger().info(f'  MC samples: {self.n_mc_samples}')
-        self.get_logger().info(f'  Uncertainty scale: {self.uncertainty_scale}x (EKF σ≈0.107m → effective σ≈{0.107*np.sqrt(self.uncertainty_scale):.3f}m)')
-        self.get_logger().info(f'  Max samples: {self.MAX_SAMPLES}')
-        self.get_logger().info(f'  Output: {self.output_dir}')
-        self.get_logger().info(f'='*60)
+        self.get_logger().info('='*60)
 
     def _generate_candidate_grid(self, x_min, x_max, y_min, y_max, resolution):
         x = np.arange(x_min, x_max + 1e-9, resolution)
@@ -508,56 +542,44 @@ class PoseAwareSampler(Node):
         return np.column_stack([xx.ravel(), yy.ravel()])
 
     def _create_trial_directory(self):
-        # Use workspace root (find it by going up from current working directory)
-        # When run via ros2 run, cwd is typically the workspace root
         workspace_root = Path.cwd()
-        base_dir = workspace_root / 'data' / 'trials' / 'pose_aware' / self.field_type
+        base_dir = workspace_root / 'data' / 'trials' / 'analytical' / self.field_type
         base_dir.mkdir(parents=True, exist_ok=True)
 
         if self.trial_num >= 0:
-            # Use specified trial number
             trial_num = self.trial_num
         else:
-            # Auto-increment: find next available trial number
             existing = [d for d in base_dir.iterdir() if d.is_dir() and d.name.startswith('trial_')]
             trial_num = max([int(d.name.split('_')[1]) for d in existing], default=0) + 1
 
         trial_dir = base_dir / f'trial_{trial_num:03d}'
         trial_dir.mkdir(parents=True, exist_ok=True)
         (trial_dir / 'figures').mkdir(exist_ok=True)
-        self.trial_num = trial_num  # Store actual trial number used
+        self.trial_num = trial_num
         return trial_dir
 
     def _save_config(self):
         config = {
-            'method': 'pose_aware',
-            'description': 'Position-aware: expected information gain under pose noise (planner-only)',
+            'method': 'analytical',
+            'description': 'Closed-form analytical expected info (Girard/Dallaire)',
             'field_type': self.field_type,
             'trial': self.trial_num,
             'noise_var': self.noise_var,
             'lengthscale': self.lengthscale,
             'lambda_cost': self.lambda_cost,
-            'candidate_resolution': self.candidate_res,
-            'position_std_fallback': self.position_std,  # Fallback if PX4 variance unavailable
-            'uncertainty_scale': self.uncertainty_scale,  # EKF covariance multiplier
-            'use_px4_ekf_variance': True,  # Uses real-time PX4 EKF position variance
-            'n_mc_samples': self.n_mc_samples,
+            'position_std_fallback': self.position_std,
+            'use_px4_ekf_variance': True,
             'max_samples': self.MAX_SAMPLES,
-            'n_initial': len(self.initial_waypoints),
-            'n_candidates': len(self.candidates),
             'timestamp': datetime.now().isoformat()
         }
         with open(self.output_dir / 'config.json', 'w') as f:
             json.dump(config, f, indent=2)
 
     def _save_ground_truth(self):
-        """Save ground truth field to file"""
         gt_file = self.output_dir / 'ground_truth.npz'
         np.savez(gt_file, X=self.gt_X, Y=self.gt_Y, field=self.gt_field)
-        self.get_logger().info(f'Ground truth saved to {gt_file}')
 
     def _init_samples_csv(self):
-        """Initialize samples.csv with header"""
         self._csv_fieldnames = ['step', 'phase', 'x', 'y', 'temp', 'info_gain', 'cumulative_info',
                                 'travel_cost', 'gp_n_obs', 'pos_var_x', 'pos_var_y', 'pos_std_x', 'pos_std_y',
                                 'ls_optimized', 'learned_lengthscale', 'learned_signal_var', 'learned_mean']
@@ -566,17 +588,14 @@ class PoseAwareSampler(Node):
             writer.writeheader()
 
     def _write_sample(self, sample_dict):
-        """Append a single sample to samples.csv"""
         try:
             with open(self.samples_file, 'a', newline='') as f:
                 writer = csv.DictWriter(f, fieldnames=self._csv_fieldnames, extrasaction='ignore')
                 writer.writerow(sample_dict)
         except Exception as e:
-            self.get_logger().warn(f'Failed to write sample to CSV: {e}')
+            self.get_logger().warn(f'CSV write failed: {e}')
 
     def _compute_reconstruction_metrics(self):
-        """Compute reconstruction error metrics vs ground truth"""
-        # Get GP predictions over ground truth grid
         grid_points = np.column_stack([self.gt_X.ravel(), self.gt_Y.ravel()])
         grid_t = torch.tensor(grid_points, dtype=torch.float32).to(device)
 
@@ -585,26 +604,22 @@ class PoseAwareSampler(Node):
             gp_mean = gp_mean.cpu().numpy().reshape(self.gt_X.shape)
             gp_var = gp_var.cpu().numpy().reshape(self.gt_X.shape)
 
-        # Compute errors
         error = gp_mean - self.gt_field
         rmse = float(np.sqrt(np.mean(error**2)))
         mae = float(np.mean(np.abs(error)))
         max_error = float(np.max(np.abs(error)))
-        mean_variance = float(np.mean(gp_var))
 
         metrics = {
             'rmse': rmse,
             'mae': mae,
             'max_error': max_error,
-            'mean_variance': mean_variance,
+            'mean_variance': float(np.mean(gp_var)),
             'n_observations': self.gp.n_observations
         }
 
-        # Save metrics
         with open(self.output_dir / 'reconstruction_metrics.json', 'w') as f:
             json.dump(metrics, f, indent=2)
 
-        # Save GP predictions
         np.savez(self.output_dir / 'gp_reconstruction.npz',
                  X=self.gt_X, Y=self.gt_Y,
                  mean=gp_mean, variance=gp_var, error=error)
@@ -613,11 +628,10 @@ class PoseAwareSampler(Node):
         self._plot_reconstruction_comparison(gp_mean, gp_var, error)
 
         self.get_logger().info(f'Reconstruction metrics: RMSE={rmse:.3f}, MAE={mae:.3f}, Max={max_error:.3f}')
-
         return metrics
 
     def _plot_reconstruction_comparison(self, gp_mean, gp_var, error):
-        """Create 2x3 comparison plot matching NS planner layout."""
+        """Create 2x3 comparison plot matching other planners' layout."""
         rmse = np.sqrt(np.mean(error**2))
         mae = np.mean(np.abs(error))
 
@@ -690,45 +704,21 @@ class PoseAwareSampler(Node):
         axes[1, 2].set_ylim(0, 25)
         axes[1, 2].set_aspect('equal')
 
-        plt.suptitle(f'Pose-Aware - {self.field_type} (Trial {self.trial_num}) - RMSE: {rmse:.3f}°C',
+        plt.suptitle(f'Analytical - {self.field_type} (Trial {self.trial_num}) - RMSE: {rmse:.3f}°C',
                      fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(self.output_dir / 'figures' / 'reconstruction_comparison.png', dpi=150, bbox_inches='tight')
         plt.close(fig)
 
     def odometry_callback(self, msg):
-        """
-        Process PX4 odometry and extract position uncertainty from EKF.
-
-        PX4 VehicleOdometry message contains:
-        ------------------------------------
-        - position[3]: [x_north, y_east, z_down] in NED frame
-        - position_variance[3]: [σ²_north, σ²_east, σ²_down] in NED frame
-
-        Planning frame:
-        ---------------
-        All planning uses NED directly (no ENU conversion).
-        Position:  [x_north, y_east]
-        Variance:  [σ²_north, σ²_east]  — same axis order as position
-
-        The position covariance matrix Σ_x for pose-aware planning is:
-
-            Σ_x = diag(σ²_north, σ²_east)
-
-        This is used in expected_information_gain() to sample:
-            x̃ = x + ξ,  where ξ ~ N(0, Σ_x)
-        """
         # Position: NED frame used directly (no ENU conversion)
         self.current_position = np.array([msg.position[0], msg.position[1], msg.position[2]])
 
         # Position variance: NED frame [σ²_north, σ²_east] — same axis order as position
-        # Apply uncertainty_scale: multiply EKF variance by scale factor
-        # scale=1 → real EKF (σ≈0.107m), scale=25 → σ≈0.54m, scale=100 → σ≈1.07m
-        self.position_variance = self.uncertainty_scale * np.array([msg.position_variance[0], msg.position_variance[1]])
+        self.position_variance = np.array([msg.position_variance[0], msg.position_variance[1]])
 
-        # Build position covariance matrix for expected info gain computation
-        # Σ_x = scale * diag(σ²_north, σ²_east)
-        # PX4 EKF only provides diagonal variances (no cross-terms available)
+        # Build position covariance matrix for Girard expected kernel computation
+        # Σ_x = diag(σ²_north, σ²_east) - PX4 EKF only provides diagonal variances
         self.position_cov = np.array([
             [self.position_variance[0], 0],
             [0, self.position_variance[1]]
@@ -749,10 +739,8 @@ class PoseAwareSampler(Node):
                 self.state = 'ARM'
                 self.last_command_time = time.time()
                 self._arm_retry_time = time.time()
-                self.get_logger().info('Armed, waiting 3s...')
 
         elif self.state == 'ARM':
-            # Re-send arm + offboard every 0.5s in case PX4 missed the first commands
             if time.time() - self._arm_retry_time >= 0.5:
                 self.arm()
                 self.engage_offboard()
@@ -762,7 +750,6 @@ class PoseAwareSampler(Node):
                 self.current_target = self.initial_waypoints[0]
                 self.last_position = self.current_position[:2].copy()
                 self._stuck_check_time = time.time()
-                self.get_logger().info('Starting initial sampling (3 points)')
 
         elif self.state == 'INITIAL_SAMPLING':
             self._run_initial_sampling()
@@ -773,26 +760,13 @@ class PoseAwareSampler(Node):
     def _run_initial_sampling(self):
         dist = np.linalg.norm(self.current_position[:2] - self.current_target[:2])
 
-        # If rover hasn't moved after 15s, re-send arm + offboard commands
         if hasattr(self, '_stuck_check_time') and np.linalg.norm(self.current_position[:2]) < 1.0:
             if time.time() - self._stuck_check_time > 15.0:
-                self.get_logger().warn('Rover stuck near origin - re-sending arm + offboard')
                 self.arm()
                 self.engage_offboard()
                 self._stuck_check_time = time.time()
         else:
-            # Rover is moving, clear stuck timer
             self._stuck_check_time = time.time()
-
-        # Debug logging every 5 seconds
-        if not hasattr(self, '_last_log_time'):
-            self._last_log_time = 0
-        if time.time() - self._last_log_time > 5.0:
-            self.get_logger().info(
-                f'Initial sampling: waypoint {self.waypoint_idx+1}/{len(self.initial_waypoints)}, '
-                f'dist={dist:.2f}m, temp={self.current_temp}'
-            )
-            self._last_log_time = time.time()
 
         if dist < 0.5 and self.current_temp is not None:
             x = self.current_position[:2].copy()
@@ -815,22 +789,16 @@ class PoseAwareSampler(Node):
                 'cumulative_info': 0.0,
                 'travel_cost': float(self.total_travel_cost),
                 'gp_n_obs': self.gp.n_observations,
-                'pos_var_x': float(self.position_variance[0]),  # σ_x² from PX4 EKF
-                'pos_var_y': float(self.position_variance[1]),  # σ_y² from PX4 EKF
-                'pos_std_x': float(np.sqrt(self.position_variance[0])),  # σ_x
-                'pos_std_y': float(np.sqrt(self.position_variance[1]))   # σ_y
+                'pos_var_x': float(self.position_variance[0]),
+                'pos_var_y': float(self.position_variance[1])
             }
             self.samples.append(sample)
             self._write_sample(sample)
 
-            self.get_logger().info(f'Initial {self.waypoint_idx + 1}/3: ({x[0]:.1f}, {x[1]:.1f}), temp={y:.2f}')
-
             self.waypoint_idx += 1
             if self.waypoint_idx >= len(self.initial_waypoints):
                 self.state = 'ADAPTIVE_SAMPLING'
-                self.get_logger().info('='*60)
-                self.get_logger().info('Starting adaptive sampling')
-                self.get_logger().info('='*60)
+                self.get_logger().info('Starting ANALYTICAL adaptive sampling')
                 self._plan_next_sample()
             else:
                 self.current_target = self.initial_waypoints[self.waypoint_idx]
@@ -842,17 +810,14 @@ class PoseAwareSampler(Node):
             x = self.current_position[:2].copy()
             y = self.current_temp
 
-            # Compute info gain BEFORE updating GP
             _, var_at_x = self.gp.predict(torch.tensor(x.reshape(1, -1), dtype=torch.float32))
-            realized_info = float(information_gain(var_at_x, self.noise_var).item())
+            realized_info = float(0.5 * np.log(1 + var_at_x.item() / self.noise_var))
             self.cumulative_info_gain += realized_info
 
-            # Travel cost
             step_cost = travel_cost(self.last_position, x)
             self.total_travel_cost += step_cost
             self.last_position = x.copy()
 
-            # Update GP
             self.gp.add_observation(x, y)
             self.sample_count += 1
 
@@ -862,7 +827,6 @@ class PoseAwareSampler(Node):
                 self.gp.optimize_hyperparameters(logger=self.get_logger())
                 optimized = True
 
-            # Log sample
             sample = {
                 'step': self.sample_count,
                 'phase': 'adaptive',
@@ -873,10 +837,10 @@ class PoseAwareSampler(Node):
                 'cumulative_info': float(self.cumulative_info_gain),
                 'travel_cost': float(self.total_travel_cost),
                 'gp_n_obs': self.gp.n_observations,
-                'pos_var_x': float(self.position_variance[0]),  # σ_x² from PX4 EKF
-                'pos_var_y': float(self.position_variance[1]),  # σ_y² from PX4 EKF
-                'pos_std_x': float(np.sqrt(self.position_variance[0])),  # σ_x
-                'pos_std_y': float(np.sqrt(self.position_variance[1])),  # σ_y
+                'pos_var_x': float(self.position_variance[0]),
+                'pos_var_y': float(self.position_variance[1]),
+                'pos_std_x': float(np.sqrt(self.position_variance[0])),
+                'pos_std_y': float(np.sqrt(self.position_variance[1])),
                 'ls_optimized': optimized,
                 'learned_lengthscale': self.gp._learned_lengthscale,
                 'learned_signal_var': self.gp._learned_signal_var,
@@ -885,18 +849,16 @@ class PoseAwareSampler(Node):
             self.samples.append(sample)
             self._write_sample(sample)
 
-            # Publish to RQT topics (ensure Python float for ROS2)
             self.info_pub.publish(Float32(data=float(realized_info)))
             self.cost_pub.publish(Float32(data=float(self.total_travel_cost)))
 
             self.get_logger().info(
                 f'Sample {self.sample_count}/{self.MAX_SAMPLES}: '
-                f'({x[0]:.1f}, {x[1]:.1f}), info={realized_info:.4f}'
+                f'({x[0]:.1f}, {x[1]:.1f}), ANALYTICAL info={realized_info:.4f}'
             )
 
             self.waiting_for_observation = False
 
-            # Check stopping
             if self.sample_count >= self.MAX_SAMPLES:
                 self.stop_reason = f'max_samples_reached ({self.MAX_SAMPLES})'
                 self._finish_mission()
@@ -918,13 +880,11 @@ class PoseAwareSampler(Node):
         self.current_target = np.array([x_next[0], x_next[1], 0.0])
         self.waiting_for_observation = True
 
-        # Get top-5 candidates for logging
-        scores_np = all_scores.cpu().numpy() if isinstance(all_scores, torch.Tensor) else all_scores
+        # Log decision
+        scores_np = np.array(all_scores) if not isinstance(all_scores, np.ndarray) else all_scores
         top5_idx = np.argsort(scores_np)[-5:][::-1]
-        top5_scores = scores_np[top5_idx]
         top5_pos = self.candidates[top5_idx]
-
-        # Log decision details
+        top5_scores = scores_np[top5_idx]
         decision = {
             'step': self.sample_count + 1,
             'current_x': float(current_pos[0]),
@@ -947,7 +907,7 @@ class PoseAwareSampler(Node):
         }
         self.decisions.append(decision)
 
-        # Update visualization (with error handling to prevent crashes)
+        # Update viz
         if self.viz is not None:
             try:
                 self.viz.update(
@@ -962,10 +922,10 @@ class PoseAwareSampler(Node):
                     cumulative_cost=self.total_travel_cost
                 )
             except Exception as e:
-                self.get_logger().warn(f'Visualization update failed: {e}')
+                self.get_logger().warn(f'Viz update failed: {e}')
 
         self.get_logger().info(
-            f'Planned: ({x_next[0]:.1f}, {x_next[1]:.1f}), score={best_score:.4f}'
+            f'ANALYTICAL planned: ({x_next[0]:.1f}, {x_next[1]:.1f}), score={best_score:.4f}'
         )
 
     def _run_final_hotspot_analysis(self):
@@ -992,7 +952,7 @@ class PoseAwareSampler(Node):
                 out_dir=self.output_dir,
                 kernel_type='rbf',
                 y_mean=0.0,
-                gp_label='Pose-Aware GP',
+                gp_label='Analytical GP',
             )
 
             n_sig = sum(1 for p in peaks if p.get('significant', False))
@@ -1002,7 +962,6 @@ class PoseAwareSampler(Node):
         except Exception as e:
             self.get_logger().warn(f'Final hotspot analysis failed: {e}')
 
-        # Also run on ground truth field for validation
         self._run_ground_truth_hotspot_analysis()
 
     def _run_ground_truth_hotspot_analysis(self):
@@ -1065,47 +1024,43 @@ class PoseAwareSampler(Node):
 
     def _greedy_single_step(self, current_pos):
         """
-        Single-step greedy planning (H=1) with expected information gain.
+        Greedy single-step planning (H=1) with analytical expected variance.
 
-        Mathematical formulation:
+        Mathematical Formulation:
         -------------------------
-        Solve the myopic (one-step lookahead) optimization:
+        Select next location to maximize:
+            score(x) = E[Δ(x̃)] - λ * c(x_curr, x)
 
-            x*_{k+1} = argmax_{x ∈ C}  U_k(x) - λ * c(x_k, x)
-
-        where:
-            - U_k(x) = E_{x̃ ~ N(x, Σ_x)} [Δ(x̃)]  [expected info gain under pose noise]
-            - c(x_k, x) = ||x_k - x||₂            [Euclidean travel cost]
-            - λ = trade-off parameter
-            - C = candidate grid
-
-        This is belief-aware planning: the robot considers where it MIGHT
-        actually sample (due to position uncertainty), not just where it commands.
+        Where:
+            E[Δ(x̃)] = ½ log(1 + E[σ²(x̃)]/σ_n²)  [analytical expected info gain]
+            E[σ²(x̃)] computed via Girard expected RBF kernel
+            c(x_curr, x) = ||x_curr - x||₂  [travel cost]
 
         Args:
-            current_pos: x_k, current robot position
+            current_pos: Current robot position (2,)
 
         Returns:
-            best_idx: index of best candidate in self.candidates
-            best_score: U(x*) - λ * c(x_k, x*)
-            best_info: U(x*), expected information gain at best candidate
-            scores: array of scores for all candidates (for visualization)
+            best_idx: Index of best candidate
+            best_score: Acquisition score
+            best_info: Expected info gain
+            scores: All candidate scores
         """
-        # Compute expected information gain for ALL candidates at once (VECTORIZED)
-        # U_k(x) = E_{x̃ ~ N(x, Σ_x)} [Δ(x̃)]
-        # This is ~1000x faster than the naive loop implementation
-        expected_info_gains = expected_information_gain_vectorized(
+        # ANALYTICAL expected info gain (CLOSED-FORM via Girard!)
+        # Use GP's current learned hyperparameters (updated by optimization)
+        current_lengthscale = self.gp._learned_lengthscale
+        current_signal_var = self.gp._learned_signal_var
+        expected_info_gains = analytical_expected_information_gain(
             self.candidates, self.gp, self.noise_var,
-            self.position_cov, self.n_mc_samples
+            self.position_cov, current_lengthscale, current_signal_var
         )
 
-        # Compute travel costs: c(x_k, x) = ||x_k - x||₂
+        # Travel costs
         travel_costs = np.array([travel_cost(current_pos, x) for x in self.candidates])
 
-        # Compute acquisition scores: score(x) = U_k(x) - λ * c(x_k, x)
+        # Acquisition scores
         scores = expected_info_gains - self.lambda_cost * travel_costs
 
-        # Find best candidate: x* = argmax score(x)
+        # Best candidate
         best_idx = int(np.argmax(scores))
         best_score = float(scores[best_idx])
         best_info = float(expected_info_gains[best_idx])
@@ -1122,7 +1077,7 @@ class PoseAwareSampler(Node):
         self.get_logger().info('Running final hotspot analysis...')
         self._run_final_hotspot_analysis()
 
-        # Save visualization
+        # Save final visualization
         if self.viz is not None:
             self.viz.save(self.output_dir / 'figures' / 'final.png')
 
@@ -1133,28 +1088,27 @@ class PoseAwareSampler(Node):
                 writer.writeheader()
                 writer.writerows(self.samples)
 
-        # Save decisions CSV (detailed)
+        # Save decisions CSV
         with open(self.output_dir / 'decisions.csv', 'w', newline='') as f:
             if self.decisions:
-                # Flatten lists for CSV
                 flat_decisions = []
                 for d in self.decisions:
                     flat = {k: v for k, v in d.items() if not isinstance(v, list)}
-                    flat['top5_x'] = str(d['top5_x'])
-                    flat['top5_y'] = str(d['top5_y'])
-                    flat['top5_scores'] = str(d['top5_scores'])
+                    flat['top5_x'] = str(d.get('top5_x', []))
+                    flat['top5_y'] = str(d.get('top5_y', []))
+                    flat['top5_scores'] = str(d.get('top5_scores', []))
                     flat_decisions.append(flat)
                 writer = csv.DictWriter(f, fieldnames=flat_decisions[0].keys())
                 writer.writeheader()
                 writer.writerows(flat_decisions)
 
-        # Save decisions JSON (full)
+        # Save decisions JSON
         with open(self.output_dir / 'decisions.json', 'w') as f:
             json.dump(self.decisions, f, indent=2)
 
         # Save summary
         summary = {
-            'method': 'pose_aware',
+            'method': 'analytical',
             'field_type': self.field_type,
             'trial': self.trial_num,
             'lambda_cost': self.lambda_cost,
@@ -1172,13 +1126,12 @@ class PoseAwareSampler(Node):
             json.dump(summary, f, indent=2)
 
         self.get_logger().info('='*60)
-        self.get_logger().info('MISSION COMPLETE')
+        self.get_logger().info('ANALYTICAL PLANNER COMPLETE')
         self.get_logger().info(f'  Samples: {self.sample_count}')
         self.get_logger().info(f'  Travel: {self.total_travel_cost:.1f}m')
         self.get_logger().info(f'  Info gain: {self.cumulative_info_gain:.4f}')
-        self.get_logger().info(f'  Reconstruction RMSE: {reconstruction_metrics["rmse"]:.3f}°C')
-        self.get_logger().info(f'  Reconstruction MAE: {reconstruction_metrics["mae"]:.3f}°C')
-        self.get_logger().info(f'  Stop: {self.stop_reason}')
+        self.get_logger().info(f'  RMSE: {reconstruction_metrics["rmse"]:.3f}°C')
+        self.get_logger().info(f'  MAE: {reconstruction_metrics["mae"]:.3f}°C')
         self.get_logger().info(f'  Data: {self.output_dir}')
         self.get_logger().info('='*60)
 
@@ -1222,7 +1175,7 @@ class PoseAwareSampler(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = PoseAwareSampler()
+    node = AnalyticalPlanner()
 
     try:
         rclpy.spin(node)

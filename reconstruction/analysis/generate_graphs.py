@@ -41,7 +41,7 @@ PLANNER_COLORS = {
 }
 
 WORKSPACE_ROOT = Path(__file__).parent.parent.parent
-DATA_ROOT = WORKSPACE_ROOT / 'src' / 'info_gain' / 'data' / 'trials'
+DATA_ROOT = WORKSPACE_ROOT / 'data' / 'trials'
 OUTPUT_ROOT = Path(__file__).parent / 'results'
 
 

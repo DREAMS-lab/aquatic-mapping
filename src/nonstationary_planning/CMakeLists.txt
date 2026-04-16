@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(info_gain)
+project(nonstationary_planning)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -24,15 +24,16 @@ endif()
 
 # Install Python module
 install(DIRECTORY
-  info_gain
+  nonstationary_planning
   DESTINATION lib/python3/dist-packages/
 )
 
-# Install Python scripts (samplers)
+# Install Python scripts (planners)
 install(PROGRAMS
-  scripts/exact_planner.py
-  scripts/pose_aware_planner.py
-  scripts/analytical_planner.py
+  scripts/nonstationary_exact_planner.py
+  scripts/nonstationary_pose_aware_planner.py
+  scripts/nonstationary_hotspot_exact_planner.py
+  scripts/nonstationary_hotspot_pose_aware_planner.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -11,6 +11,7 @@ import shutil
 import csv
 import numpy as np
 import signal
+from pathlib import Path
 
 
 class FieldDataRecorder(Node):
@@ -20,21 +21,11 @@ class FieldDataRecorder(Node):
         self.field_name = field_name
         self.trial_number = trial_number
 
-        # Setup paths - use AQUATIC_WORKSPACE env var if set, otherwise detect location
+        # Setup paths - use AQUATIC_WORKSPACE env var if set, otherwise auto-detect
+        # This file lives at src/sampling/scripts/logging/record_field_data.py (depth 4)
         workspace_root = os.environ.get('AQUATIC_WORKSPACE')
         if not workspace_root:
-            # Check common locations
-            possible_paths = [
-                '/home/simuser/aquatic-mapping',  # Docker container
-                os.path.expanduser('~/workspaces/aquatic-mapping'),  # Local dev
-                os.path.expanduser('~/aquatic-mapping'),  # Alternative local
-            ]
-            for path in possible_paths:
-                if os.path.exists(path):
-                    workspace_root = path
-                    break
-            else:
-                workspace_root = os.path.expanduser('~/workspaces/aquatic-mapping')
+            workspace_root = str(Path(__file__).resolve().parents[4])
 
         trial_folder = os.path.join(workspace_root, 'src', 'sampling', 'data', 'missions',
                                     f'trial_{trial_number}', field_name)

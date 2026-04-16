@@ -37,6 +37,10 @@ from standard_gp import (
     visualize_standard_gp, save_standard_gp_results
 )
 
+SCRIPT_DIR = Path(__file__).parent.absolute()
+WORKSPACE_ROOT = SCRIPT_DIR.parent
+RESULTS_DIR = WORKSPACE_ROOT / "data" / "reconstruction"
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"using device: {device}")
 if torch.cuda.is_available():
@@ -67,7 +71,7 @@ def run_mchutchon_nigp(field_type, trial_number, kernel, train_x, train_y, train
     # Read Standard GP predictions from saved results (computed separately in main loop)
     std_pred_mean_grid = None
     std_pred_variance_grid = None
-    std_results_dir = Path('results') / f'trial_{trial_number}' / 'standard_gp' / field_type / kernel
+    std_results_dir = RESULTS_DIR / f'trial_{trial_number}' / 'standard_gp' / field_type / kernel
     std_pred_path = std_results_dir / f'{field_type}_{kernel}_predictions.npy'
     std_var_path = std_results_dir / f'{field_type}_{kernel}_variance.npy'
 
@@ -122,7 +126,7 @@ def run_girard_uncertain_input(field_type, trial_number, kernel, train_x, train_
     # Read Standard GP predictions from saved results (computed separately in main loop)
     std_pred_mean_grid = None
     std_pred_variance_grid = None
-    std_results_dir = Path('results') / f'trial_{trial_number}' / 'standard_gp' / field_type / kernel
+    std_results_dir = RESULTS_DIR / f'trial_{trial_number}' / 'standard_gp' / field_type / kernel
     std_pred_path = std_results_dir / f'{field_type}_{kernel}_predictions.npy'
     std_var_path = std_results_dir / f'{field_type}_{kernel}_variance.npy'
 
@@ -238,7 +242,7 @@ def run_single_field(field_type, trial_number, method='all'):
     for kernel in kernels:
         if method in ['standard', 'all']:
             # create output directory
-            output_dir = Path('results') / f'trial_{trial_number}' / 'standard_gp' / field_type / kernel
+            output_dir = RESULTS_DIR / f'trial_{trial_number}' / 'standard_gp' / field_type / kernel
             output_dir.mkdir(parents=True, exist_ok=True)
 
             run_standard_gp(field_type, trial_number, kernel, train_x, train_y, train_cov,
@@ -247,7 +251,7 @@ def run_single_field(field_type, trial_number, method='all'):
 
         if method in ['mchutchon', 'all']:
             # create output directory
-            output_dir = Path('results') / f'trial_{trial_number}' / 'mchutchon_nigp' / field_type / kernel
+            output_dir = RESULTS_DIR / f'trial_{trial_number}' / 'mchutchon_nigp' / field_type / kernel
             output_dir.mkdir(parents=True, exist_ok=True)
 
             run_mchutchon_nigp(field_type, trial_number, kernel, train_x, train_y, train_cov,
@@ -261,7 +265,7 @@ def run_single_field(field_type, trial_number, method='all'):
                 continue
 
             # create output directory
-            output_dir = Path('results') / f'trial_{trial_number}' / 'girard' / field_type / kernel
+            output_dir = RESULTS_DIR / f'trial_{trial_number}' / 'girard' / field_type / kernel
             output_dir.mkdir(parents=True, exist_ok=True)
 
             run_girard_uncertain_input(field_type, trial_number, kernel, train_x, train_y, train_cov,
@@ -321,7 +325,7 @@ def main():
         all_success = all(results.values())
         if all_success:
             print("\n✓ all reconstructions completed successfully!")
-            print(f"\nresults saved to: {Path('results').absolute()}")
+            print(f"\nresults saved to: {RESULTS_DIR.absolute()}")
         else:
             print("\n✗ some reconstructions failed")
             sys.exit(1)

@@ -1,0 +1,15 @@
+# Planner dependencies (info_gain + nonstationary_planning)
+numpy==1.26.4
+scipy>=1.13
+matplotlib>=3.9
+scikit-learn>=1.6
+pandas>=2.2
+
+# PyTorch + GP (use CUDA index for GPU support)
+# CPU only: pip install -r requirements.txt
+# GPU:      pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.5.1
+gpytorch==1.13
+
+# Statistics (optional — has fallback if missing)
+statsmodels>=0.14

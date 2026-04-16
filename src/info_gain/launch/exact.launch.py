@@ -10,7 +10,7 @@ Launches everything needed for exact planning experiment (no uncertainty):
 
 Usage:
   ros2 launch info_gain exact.launch.py field_type:=radial
-  ros2 launch info_gain exact.launch.py field_type:=radial trial:=1 horizon:=2
+  ros2 launch info_gain exact.launch.py field_type:=radial trial:=1
 
 Available field types: radial, x_compress, y_compress, x_compress_tilt, y_compress_tilt
 """
@@ -50,12 +50,6 @@ def generate_launch_description():
         description='Trial number (-1 = auto-increment)'
     )
 
-    horizon_arg = DeclareLaunchArgument(
-        'horizon',
-        default_value='2',
-        description='Planning horizon H (1=greedy, 2=default)'
-    )
-
     lambda_cost_arg = DeclareLaunchArgument(
         'lambda_cost',
         default_value='0.1',
@@ -83,7 +77,6 @@ def generate_launch_description():
     # Get launch configurations
     field_type = LaunchConfiguration('field_type')
     trial = LaunchConfiguration('trial')
-    horizon = LaunchConfiguration('horizon')
     lambda_cost = LaunchConfiguration('lambda_cost')
     noise_var = LaunchConfiguration('noise_var')
     lengthscale = LaunchConfiguration('lengthscale')
@@ -93,7 +86,6 @@ def generate_launch_description():
         # ========== LAUNCH ARGUMENTS ==========
         field_type_arg,
         trial_arg,
-        horizon_arg,
         lambda_cost_arg,
         noise_var_arg,
         lengthscale_arg,
@@ -248,7 +240,6 @@ def generate_launch_description():
                         'trial': trial,
                         'noise_var': noise_var,
                         'lengthscale': lengthscale,
-                        'horizon': horizon,
                         'lambda_cost': lambda_cost,
                         'candidate_resolution': candidate_resolution,
                     }]

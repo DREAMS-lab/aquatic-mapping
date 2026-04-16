@@ -21,7 +21,7 @@ from pathlib import Path
 from collections import defaultdict
 
 # Configuration
-RESULTS_DIR = Path(__file__).parent.parent / 'results'
+RESULTS_DIR = Path(__file__).parent.parent.parent / 'data' / 'reconstruction'
 FIELDS = ['radial', 'x_compress', 'y_compress', 'x_compress_tilt', 'y_compress_tilt']
 KERNELS = ['rbf', 'exponential', 'matern15', 'matern25']
 METHODS = ['standard_gp', 'girard', 'mchutchon_nigp']

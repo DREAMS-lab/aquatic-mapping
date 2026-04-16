@@ -22,6 +22,7 @@ def compute_metrics(pred_mean, ground_truth):
     mse = np.mean(errors ** 2)
     rmse = np.sqrt(mse)
     mae = np.mean(np.abs(errors))
+    max_error = np.max(np.abs(errors))
 
     temp_range = ground_truth.max() - ground_truth.min()
     nrmse = rmse / temp_range
@@ -30,5 +31,6 @@ def compute_metrics(pred_mean, ground_truth):
         'mse': mse,
         'rmse': rmse,
         'mae': mae,
+        'max_error': max_error,
         'nrmse': nrmse
     }
