@@ -58,8 +58,8 @@ def generate_launch_description():
 
     noise_var_arg = DeclareLaunchArgument(
         'noise_var',
-        default_value='0.01',
-        description='GP observation noise variance'
+        default_value='0.36',
+        description='GP observation noise variance (0.6^2 matches field sensor noise)'
     )
 
     lengthscale_arg = DeclareLaunchArgument(

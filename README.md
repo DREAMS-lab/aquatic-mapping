@@ -78,7 +78,7 @@ cd ../..
 
 # Run a single trial (exact planner, radial field)
 cd container/info_gain
-python3 orchestrator.py --trials 1 --planners exact --fields radial --workers 1
+python3 orchestrator.py --trials 1 --planners exact --fields radial --workers 2
 ```
 
 Watch via VNC at `http://localhost:6090/vnc.html`.
